@@ -2,7 +2,7 @@ from datetime import datetime
 from loguru import logger
 from typing import Dict, Optional, Tuple, List, Any
 
-from app.api.instrument_manager import InstrumentManager
+from app.market.instruments import InstrumentManager
 from app.trading.portfolio import PaperPortfolioManager
 
 class PaperExecutor:
@@ -79,7 +79,8 @@ class PaperExecutor:
             'token': token,
             'symbol': symbol,
             'option_type': option_type,
-            'price': price
+            'price': price,
+            'strike': strike
         }
 
     def _build_bull_put_spread(self, atm: float, prices: Dict[str, float]) -> List[Dict[str, Any]]:

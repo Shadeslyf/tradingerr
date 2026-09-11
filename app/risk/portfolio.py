@@ -14,6 +14,7 @@ class RiskEngine:
         
         self.daily_limits = DailyLimits(max_daily_loss_pct=1.5, max_weekly_loss_pct=3.0)
         self.kill_switch = KillSwitch()
+        self.trade_pnls = []
         
     def evaluate_trade(self, ev_data: dict) -> bool:
         """
@@ -47,4 +48,5 @@ class RiskEngine:
         """
         self.current_capital += pnl
         self.daily_limits.add_trade_pnl(pnl, self.current_capital)
+        self.trade_pnls.append(pnl)
         logger.info(f"Risk Engine: Trade Result ₹{pnl:.2f}. Current Capital: ₹{self.current_capital:.2f}")

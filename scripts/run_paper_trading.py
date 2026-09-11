@@ -13,7 +13,7 @@ import joblib
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.api.auth import AngelOneAuth
-from app.api.instrument_manager import InstrumentManager
+from app.market.instruments import InstrumentManager
 from app.database.models import init_db
 from app.database.repositories import MarketDataRepository, SessionLocal
 from app.trading.portfolio import PaperPortfolioManager

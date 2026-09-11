@@ -108,8 +108,8 @@ class PaperPortfolioManager:
             
             # Retrieve exact executed details
             executed_order = self.broker.orders[order_id]
-            actual_entry_price = executed_order['executed_price']
-            entry_costs = executed_order['transaction_costs']
+            actual_entry_price = float(executed_order['executed_price'])
+            entry_costs = float(executed_order['transaction_costs'])
             total_entry_costs += entry_costs
             
             trade_data = {
@@ -154,8 +154,8 @@ class PaperPortfolioManager:
             
             # Retrieve exact executed details (simulating slippage/costs on exit)
             executed_order = self.broker.orders[order_id]
-            actual_exit_price = executed_order['executed_price']
-            exit_costs = executed_order['transaction_costs']
+            actual_exit_price = float(executed_order['executed_price'])
+            exit_costs = float(executed_order['transaction_costs'])
             
             if trade.action == 'BUY':
                 pnl = actual_exit_price - entry
