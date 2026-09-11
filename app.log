@@ -1,0 +1,22 @@
+2026-09-11 17:19:48 | INFO     | __main__:main:16 - Starting AI-Based Indian Options Trading System - Phase 1 & 2
+2026-09-11 17:19:48 | INFO     | app.broker.angel_one:login:24 - Attempting login for client ID: dummy_client_id
+2026-09-11 17:19:48 | WARNING  | app.broker.angel_one:login:26 - Dummy credentials used. Skipping actual login.
+2026-09-11 17:19:48 | INFO     | app.broker.angel_one:get_instrument_master:51 - Fetching instrument master from https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json
+2026-09-11 17:19:48 | ERROR    | app.broker.angel_one:get_instrument_master:58 - Failed to fetch instrument master: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1077)>
+2026-09-11 17:19:48 | ERROR    | __main__:main:27 - Failed to retrieve instrument master.
+2026-09-11 17:20:50 | INFO     | __main__:main:16 - Starting AI-Based Indian Options Trading System - Phase 1 & 2
+2026-09-11 17:20:50 | INFO     | app.broker.angel_one:login:24 - Attempting login for client ID: dummy_client_id
+2026-09-11 17:20:50 | WARNING  | app.broker.angel_one:login:26 - Dummy credentials used. Skipping actual login.
+2026-09-11 17:20:50 | INFO     | app.broker.angel_one:get_instrument_master:51 - Fetching instrument master from https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json
+2026-09-11 17:20:56 | INFO     | app.broker.angel_one:get_instrument_master:57 - Successfully fetched 146966 instruments.
+2026-09-11 17:20:56 | INFO     | app.market.instruments:_preprocess:14 - Preprocessing instrument data...
+2026-09-11 17:20:56 | WARNING  | __main__:main:36 - NIFTY Spot not found.
+2026-09-11 17:20:56 | INFO     | __main__:main:43 - Found 1636 NIFTY option contracts.
+2026-09-11 17:22:03 | INFO     | __main__:main:16 - Starting AI-Based Indian Options Trading System - Phase 1 & 2
+2026-09-11 17:22:03 | INFO     | app.broker.angel_one:login:24 - Attempting login for client ID: dummy_client_id
+2026-09-11 17:22:03 | WARNING  | app.broker.angel_one:login:26 - Dummy credentials used. Skipping actual login.
+2026-09-11 17:22:03 | INFO     | app.broker.angel_one:get_instrument_master:51 - Fetching instrument master from https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json
+2026-09-11 17:22:09 | INFO     | app.broker.angel_one:get_instrument_master:57 - Successfully fetched 146966 instruments.
+2026-09-11 17:22:09 | INFO     | app.market.instruments:_preprocess:14 - Preprocessing instrument data...
+2026-09-11 17:22:09 | INFO     | __main__:main:34 - Found NIFTY Spot: Symbol: Nifty 50, Token: 99926000
+2026-09-11 17:22:09 | INFO     | __main__:main:43 - Found 1636 NIFTY option contracts.
