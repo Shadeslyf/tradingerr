@@ -3,7 +3,7 @@ import joblib
 import pandas as pd
 import numpy as np
 from loguru import logger
-from sklearn.ensemble import RandomForestClassifier
+import xgboost as xgb
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import classification_report, f1_score, precision_score, recall_score, confusion_matrix
 
@@ -11,13 +11,17 @@ class ModelTrainer:
     def __init__(self, n_splits=5):
         self.n_splits = n_splits
         self.params = {
+            'objective': 'multi:softprob',
+            'num_class': 3,
+            'eval_metric': 'mlogloss',
+            'max_depth': 5,
+            'learning_rate': 0.05,
             'n_estimators': 100,
-            'max_depth': 10,
-            'min_samples_split': 5,
-            'random_state': 42,
-            'n_jobs': -1 # use all cores
+            'subsample': 0.8,
+            'colsample_bytree': 0.8,
+            'random_state': 42
         }
-        self.model = RandomForestClassifier(**self.params)
+        self.model = xgb.XGBClassifier(**self.params)
 
     def prepare_data(self, df: pd.DataFrame, target_col='label'):
         # Drop rows with missing labels or essential features
@@ -50,7 +54,7 @@ class ModelTrainer:
             y_train, y_test = y.iloc[train_index], y.iloc[test_index]
             
             # Use early stopping if desired, but for basic CV we just fit
-            model = RandomForestClassifier(**self.params)
+            model = xgb.XGBClassifier(**self.params)
             model.fit(X_train, y_train)
             
             y_pred = model.predict(X_test)

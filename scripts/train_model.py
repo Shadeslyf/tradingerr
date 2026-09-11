@@ -26,7 +26,7 @@ def main():
     
     trainer = ModelTrainer(n_splits=5)
     
-    logger.info("Preparing data for Random Forest...")
+    logger.info("Preparing data for XGBoost...")
     X, y = trainer.prepare_data(df)
     
     if len(X) < 50:
@@ -40,7 +40,7 @@ def main():
     trainer.train_with_cv(X, y)
     
     # Save the model
-    model_filename = f"data/models/random_forest_regime_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+    model_filename = f"data/models/xgboost_regime_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
     trainer.save_model(model_filename)
     
     logger.info("Phase 7 Model Training Pipeline Complete.")
