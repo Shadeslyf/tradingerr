@@ -25,21 +25,41 @@ class PaperExecutor:
             return
             
         basket = []
+        ev_data = None
+        prob_win = 0.65 # Placeholder for now, later passed from AI
+        
+        from app.strategies.expected_value import ExpectedValueCalculator
         
         if signal == 1:
             logger.info(f"Signal 1 (Bullish): Building Bull Put Spread at ATM {atm_strike}")
             basket = self._build_bull_put_spread(atm_strike, latest_options_ticks)
+            if len(basket) == 2:
+                ev_data = ExpectedValueCalculator.calculate_credit_spread(basket[0], basket[1], prob_win)
+                
         elif signal == 2:
             logger.info(f"Signal 2 (Bearish): Building Bear Call Spread at ATM {atm_strike}")
             basket = self._build_bear_call_spread(atm_strike, latest_options_ticks)
+            if len(basket) == 2:
+                ev_data = ExpectedValueCalculator.calculate_credit_spread(basket[0], basket[1], prob_win)
+                
         elif signal == 0:
             logger.info(f"Signal 0 (Range): Building Iron Condor around ATM {atm_strike}")
             basket = self._build_iron_condor(atm_strike, latest_options_ticks)
-        else:
+            if len(basket) == 4:
+                call_ev = ExpectedValueCalculator.calculate_credit_spread(basket[0], basket[1], prob_win)
+                put_ev = ExpectedValueCalculator.calculate_credit_spread(basket[2], basket[3], prob_win)
+                ev_data = ExpectedValueCalculator.evaluate_iron_condor(call_ev, put_ev)
+                
+        if not basket or not ev_data:
             return
             
-        if basket:
-            self.portfolio.execute_basket(basket, signal, timestamp)
+        # Step 2: Risk Engine Filter
+        if not self.portfolio.risk_engine.evaluate_trade(ev_data):
+            logger.warning("Trade rejected by Risk Engine based on EV/Capital.")
+            return
+            
+        # Step 3: Execute
+        self.portfolio.execute_basket(basket, signal, timestamp)
 
     def _get_leg(self, strike: float, option_type: str, action: str, prices: Dict[str, float]) -> Optional[Dict[str, Any]]:
         token = self.instrument_manager.get_option_token(self.underlying, strike, option_type)

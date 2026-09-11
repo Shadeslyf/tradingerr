@@ -1,0 +1,1457 @@
+# AI-Based Indian Options Trading System — Development Specification
+
+## 1. Project Objective
+
+Build a production-quality Python-based AI/ML trading research and paper-trading platform for the Indian stock market, initially focused ONLY on:
+
+* NIFTY 50 index options
+* Angel One SmartAPI as the broker/data provider
+* Option buying
+* Defined-risk option selling using spreads
+* AI/ML-based market-regime classification and trade filtering
+* Paper trading first
+* Real-money automated trading ONLY after extensive validation
+
+The objective is NOT to create a "prediction bot" that blindly predicts whether NIFTY will go up or down.
+
+The objective is to build a quantitative system that:
+
+1. Collects market and options data.
+2. Generates meaningful features.
+3. Identifies the current market regime.
+4. Estimates probabilities of future NIFTY movement.
+5. Selects an appropriate options strategy.
+6. Calculates expected value.
+7. Applies strict risk management.
+8. Executes paper trades.
+9. Measures performance after realistic transaction costs and slippage.
+10. Eventually supports live Angel One execution, but ONLY after paper-trading validation.
+
+IMPORTANT:
+
+* Do not implement live order execution initially.
+* All trading functionality must default to PAPER mode.
+* Never use real money without an explicit configuration change.
+* Build the architecture so live execution can be added later without changing the strategy logic.
+
+---
+
+# 2. High-Level Architecture
+
+Use the following architecture:
+
+Market Data
+↓
+Angel One SmartAPI
+↓
+Data Ingestion Layer
+↓
+Raw Data Storage
+↓
+Feature Engineering
+↓
+ML / AI Model
+↓
+Market Regime Classification
+↓
+Strategy Engine
+↓
+Expected Value Calculation
+↓
+Risk Management Engine
+↓
+Paper Execution Engine
+↓
+Portfolio / P&L
+↓
+Analytics Dashboard
+
+Eventually:
+
+Risk Engine
+↓
+Live Execution Engine
+↓
+Angel One SmartAPI
+↓
+NSE
+
+Keep these modules separated.
+
+Do NOT mix:
+
+* ML logic
+* trading logic
+* broker API code
+* risk management
+* database code
+
+---
+
+# 3. Technology Stack
+
+Use:
+
+## Backend
+
+* Python 3.12+
+* FastAPI
+* Pydantic
+* asyncio where appropriate
+
+## Data / analysis
+
+* Polars preferred for large datasets
+* Pandas where ecosystem compatibility is useful
+* NumPy
+* SciPy
+
+## Machine learning
+
+Start with:
+
+* scikit-learn
+* XGBoost or LightGBM
+
+Do NOT start with deep learning unless testing demonstrates that it provides measurable improvement.
+
+Do NOT use an LLM as the primary price-prediction model.
+
+## Database
+
+Start with:
+
+* PostgreSQL
+
+Use Parquet for large historical/raw datasets where appropriate.
+
+Design the database so it can later be migrated to TimescaleDB if required.
+
+## Visualization
+
+Use:
+
+* React
+* TypeScript
+* Vite
+
+For charts:
+
+* TradingView Lightweight Charts or another suitable financial charting library.
+
+## Broker
+
+Angel One SmartAPI.
+
+Keep the broker integration behind an interface such as:
+
+BrokerClient
+├── AngelOneBroker
+└── PaperBroker
+
+This allows the exact same strategy to run against either paper execution or live execution.
+
+---
+
+# 4. Project Structure
+
+Create a clean modular project approximately like:
+
+backend/
+app/
+main.py
+
+```
+    config/
+        settings.py
+
+    api/
+        routes/
+
+    broker/
+        base.py
+        angel_one.py
+        paper.py
+
+    data/
+        ingestion/
+        normalization/
+        storage/
+
+    market/
+        instruments.py
+        option_chain.py
+        greeks.py
+
+    features/
+        price_features.py
+        volatility_features.py
+        options_features.py
+        market_structure.py
+        feature_pipeline.py
+
+    ml/
+        datasets.py
+        labels.py
+        train.py
+        predict.py
+        models/
+        evaluation.py
+
+    strategies/
+        base.py
+        option_buying.py
+        credit_spread.py
+        regime_strategy.py
+
+    risk/
+        position_sizing.py
+        stop_loss.py
+        exposure.py
+        daily_limits.py
+        kill_switch.py
+
+    execution/
+        paper_executor.py
+        live_executor.py
+
+    portfolio/
+        portfolio.py
+        positions.py
+        pnl.py
+
+    backtest/
+        engine.py
+        simulator.py
+        metrics.py
+        walk_forward.py
+
+    monitoring/
+        logging.py
+        health.py
+
+    database/
+        models.py
+        repositories.py
+```
+
+tests/
+
+data/
+raw/
+processed/
+features/
+
+models/
+
+notebooks/
+
+scripts/
+
+frontend/
+
+docker-compose.yml
+
+README.md
+
+.env.example
+
+requirements.txt
+
+```
+
+Do not over-engineer unnecessarily. Keep modules simple and testable.
+
+---
+
+# 5. Angel One Integration
+
+Integrate Angel One SmartAPI.
+
+The broker module should support:
+
+- Authentication
+- Instrument master retrieval
+- NIFTY spot data
+- NIFTY futures data
+- Options data
+- Historical candles where available
+- Historical OI where available
+- Live WebSocket market data
+- Option Greeks/IV where available
+- Order APIs later
+
+Do NOT hard-code instrument tokens.
+
+Create an instrument-management component that:
+
+1. Downloads/loads Angel One instrument master.
+2. Finds NIFTY.
+3. Finds NIFTY futures.
+4. Finds NIFTY CE contracts.
+5. Finds NIFTY PE contracts.
+6. Maps:
+   - expiry
+   - strike
+   - option type
+   - symbol
+   - token
+   - exchange
+   - lot size
+
+Store this normalized information locally.
+
+---
+
+# 6. Data Model
+
+Create normalized market-data models.
+
+Example:
+
+MarketTick:
+
+- timestamp
+- symbol
+- token
+- exchange
+- ltp
+- volume
+- open_interest
+- bid
+- ask
+
+OHLCV:
+
+- timestamp
+- symbol
+- open
+- high
+- low
+- close
+- volume
+- open_interest
+
+OptionContract:
+
+- underlying
+- expiry
+- strike
+- option_type
+- symbol
+- token
+- lot_size
+
+OptionSnapshot:
+
+- timestamp
+- underlying
+- expiry
+- strike
+- option_type
+- ltp
+- volume
+- oi
+- change_in_oi
+- iv
+- delta
+- gamma
+- theta
+- vega
+- bid
+- ask
+
+---
+
+# 7. Data Collection
+
+Initially collect data at approximately 1-minute intervals if feasible.
+
+For NIFTY:
+
+- Spot
+- Futures
+
+For options:
+
+ATM ± a configurable number of strikes.
+
+Do not initially collect every possible strike if unnecessary.
+
+Make the strike range configurable.
+
+Example:
+
+ATM ± 10 strikes.
+
+Store timestamps accurately.
+
+All timestamps should use IST internally for trading-session logic, but store timezone-aware timestamps.
+
+---
+
+# 8. Trading Session
+
+Implement Indian market-session awareness.
+
+Default:
+
+Market open:
+09:15 IST
+
+Market close:
+15:30 IST
+
+Handle:
+
+- pre-market data if available
+- market open
+- normal session
+- expiry day
+- holidays
+- weekends
+
+Do not assume every weekday is a trading day.
+
+Create a market-calendar module.
+
+---
+
+# 9. Features
+
+Start with a manageable feature set.
+
+## Price / Trend
+
+Calculate:
+
+- EMA 9
+- EMA 21
+- EMA 50
+- VWAP
+- ADX
+- ATR
+
+## Momentum
+
+- RSI
+- Rate of Change
+- Price momentum
+- Volume momentum
+
+## Market Structure
+
+- Previous day high
+- Previous day low
+- Previous day close
+- Current day high
+- Current day low
+- Opening range
+- Distance from VWAP
+- Distance from previous close
+- Gap percentage
+
+## Volatility
+
+- ATR
+- India VIX
+- realized volatility
+- implied volatility
+- IV percentile where enough history exists
+
+## Options
+
+Calculate:
+
+- Put/Call ratio
+- Call OI
+- Put OI
+- Change in Call OI
+- Change in Put OI
+- OI concentration
+- ATM IV
+- IV skew
+- Call/Put volume
+- Call/Put volume ratio
+- distance from ATM
+
+## Time
+
+Include:
+
+- minute since market open
+- minutes until market close
+- hour
+- day of week
+- expiry day flag
+- days to expiry
+
+Avoid blindly adding hundreds of indicators.
+
+---
+
+# 10. Prevent Data Leakage
+
+This is CRITICAL.
+
+Never use future information.
+
+Every feature at time T must be calculated ONLY using information available at or before T.
+
+Examples of forbidden leakage:
+
+- using the day's closing price to make a 10:00 AM prediction
+- using future option prices
+- using future OI
+- calculating normalization using future data
+- randomly splitting time-series data
+
+All ML datasets must respect chronological ordering.
+
+---
+
+# 11. ML Objective
+
+Do NOT initially ask the model:
+
+"Will NIFTY go up?"
+
+Instead predict multiple outcomes.
+
+Example:
+
+At time T:
+
+P(NIFTY rises >= 0.30% within next 30 minutes)
+
+P(NIFTY falls >= 0.30% within next 30 minutes)
+
+P(NIFTY remains within range)
+
+These thresholds must be configurable.
+
+Example output:
+
+{
+    "bullish_probability": 0.67,
+    "bearish_probability": 0.14,
+    "range_probability": 0.19
+}
+
+The model should also provide confidence/calibration metrics.
+
+---
+
+# 12. Initial ML Models
+
+Start with simple models:
+
+1. Logistic Regression baseline
+2. Random Forest if useful
+3. XGBoost
+4. LightGBM if available
+
+Compare them.
+
+Do not assume the most complex model is best.
+
+Use proper time-series validation.
+
+---
+
+# 13. Market Regime
+
+Create a regime classifier.
+
+Initial regimes:
+
+1. STRONG_BULLISH
+2. BULLISH
+3. STRONG_BEARISH
+4. BEARISH
+5. RANGE
+6. HIGH_VOLATILITY
+7. UNCERTAIN
+
+The regime should consider:
+
+- trend strength
+- volatility
+- momentum
+- options positioning
+- IV
+- time of day
+
+The AI should NOT be forced to produce a trade.
+
+"NO TRADE" is a valid and desirable output.
+
+---
+
+# 14. Strategy Engine
+
+Create three initial modes.
+
+## Strategy A — Option Buying
+
+Used primarily during strong directional regimes.
+
+Bullish example:
+
+- ATM Call
+- or 1-strike ITM Call
+
+Bearish example:
+
+- ATM Put
+- or 1-strike ITM Put
+
+Selection should consider:
+
+- liquidity
+- bid/ask spread
+- volume
+- OI
+- IV
+- delta
+- theta
+- expiry
+
+Avoid far OTM options.
+
+---
+
+# 15. Strategy B — Defined-Risk Option Selling
+
+Do NOT implement naked option selling initially.
+
+Use credit spreads.
+
+Example bullish:
+
+SELL NIFTY Put
+BUY lower-strike NIFTY Put
+
+Example bearish:
+
+SELL NIFTY Call
+BUY higher-strike NIFTY Call
+
+Before entering calculate:
+
+- maximum profit
+- maximum loss
+- breakeven
+- risk/reward
+- probability of profit
+- estimated transaction costs
+- estimated slippage
+- expected value
+
+Reject trades where maximum loss or expected value is unacceptable.
+
+---
+
+# 16. Strategy C — No Trade
+
+The system MUST be allowed to stay flat.
+
+For example:
+
+If:
+
+bullish = 0.40
+bearish = 0.35
+range = 0.25
+
+Then:
+
+NO TRADE
+
+Do not force a position.
+
+---
+
+# 17. Strategy Selection
+
+Implement a regime-based decision engine.
+
+Conceptually:
+
+STRONG_BULLISH
+    → Option Buying
+
+STRONG_BEARISH
+    → Option Buying
+
+BULLISH
+    → Option Buying if confidence sufficient
+
+BEARISH
+    → Option Buying if confidence sufficient
+
+RANGE + high IV
+    → Defined-risk credit spread
+
+HIGH_VOLATILITY
+    → Special rules / potentially NO TRADE
+
+UNCERTAIN
+    → NO TRADE
+
+Make thresholds configurable.
+
+---
+
+# 18. Expected Value
+
+Every trade must calculate expected value.
+
+Conceptually:
+
+Expected Value =
+Probability of Win × Average Win
+-
+Probability of Loss × Average Loss
+-
+Transaction Costs
+-
+Slippage
+
+Do not execute a trade merely because the model probability exceeds 50%.
+
+Require an adequate edge over costs.
+
+---
+
+# 19. Risk Management
+
+This is one of the most important components.
+
+Make all limits configurable.
+
+Initial example configuration:
+
+Starting capital:
+₹3,00,000
+
+Maximum risk per trade:
+0.5%–1%
+
+Maximum daily loss:
+1.5%
+
+Maximum weekly loss:
+3%
+
+Maximum portfolio drawdown:
+10%
+
+These are initial research values, NOT guaranteed optimal values.
+
+Allow them to be changed through configuration.
+
+---
+
+# 20. Risk Engine
+
+Before EVERY trade check:
+
+- available capital
+- current exposure
+- maximum risk
+- daily loss
+- weekly loss
+- consecutive losses
+- maximum positions
+- liquidity
+- spread width
+- slippage
+- market status
+- stale data
+- broker connection
+- kill switch
+
+If any safety condition fails:
+
+NO TRADE.
+
+---
+
+# 21. Kill Switch
+
+Implement an emergency kill switch.
+
+Conditions can include:
+
+- daily loss limit reached
+- abnormal market movement
+- stale market data
+- broker API failure
+- WebSocket disconnected
+- order status unknown
+- excessive slippage
+- unexpected position
+- system health failure
+
+When triggered:
+
+1. Stop new trades.
+2. Log the reason.
+3. Alert the user.
+4. In LIVE mode eventually support controlled position handling.
+
+For paper trading, simply stop opening new positions.
+
+---
+
+# 22. Backtesting Engine
+
+Build a proper event-driven backtesting engine.
+
+It must simulate:
+
+- entry
+- exit
+- option price movement
+- spread prices
+- transaction costs
+- brokerage
+- taxes/fees
+- bid/ask spread
+- slippage
+- position sizing
+- stop loss
+- take profit
+- expiry
+- time-based exits
+
+Do NOT assume that buying at the candle close always represents a realistic fill.
+
+Make execution assumptions configurable.
+
+---
+
+# 23. Backtest Metrics
+
+Report:
+
+- total trades
+- winning trades
+- losing trades
+- win rate
+- average win
+- average loss
+- profit factor
+- expectancy
+- total P&L
+- CAGR where appropriate
+- maximum drawdown
+- Sharpe ratio
+- Sortino ratio
+- average holding time
+- maximum consecutive losses
+- transaction costs
+- slippage cost
+
+Also break down results by:
+
+- year
+- month
+- weekday
+- expiry day
+- market regime
+- strategy
+- time of day
+
+---
+
+# 24. Walk-Forward Testing
+
+Do NOT use random train/test splitting.
+
+Implement chronological walk-forward testing.
+
+Example:
+
+2021–2023:
+Training
+
+2024:
+Validation
+
+2025:
+Out-of-sample test
+
+Then rolling forward as more data becomes available.
+
+The exact periods should be configurable.
+
+---
+
+# 25. Baseline Strategies
+
+Before using ML, implement simple baselines.
+
+Examples:
+
+1. VWAP + EMA directional strategy
+2. Simple momentum strategy
+3. Simple range/mean-reversion strategy
+4. Basic option-buying strategy
+5. Basic credit-spread strategy
+
+Then compare:
+
+Baseline
+vs
+ML strategy
+
+If the AI cannot beat a simple baseline after costs, do not assume AI is useful.
+
+---
+
+# 26. Paper Trading Engine
+
+Implement a PaperBroker with the same interface as the future AngelOneBroker.
+
+Example:
+
+BrokerClient
+    - get_quote()
+    - get_positions()
+    - place_order()
+    - modify_order()
+    - cancel_order()
+    - get_order_status()
+
+PaperBroker implements these without sending real orders.
+
+It should simulate:
+
+- fills
+- slippage
+- brokerage
+- fees
+- positions
+- P&L
+
+All paper trades must be persisted.
+
+---
+
+# 27. Trading Journal
+
+Every signal/trade should record:
+
+- timestamp
+- market regime
+- model probabilities
+- feature snapshot
+- strategy
+- contract
+- entry
+- stop
+- target
+- quantity
+- expected value
+- actual result
+- exit reason
+- P&L
+- transaction costs
+
+This will allow us to determine WHY the model is making or losing money.
+
+---
+
+# 28. Dashboard
+
+Create a React dashboard showing:
+
+## Live status
+
+- Market status
+- NIFTY price
+- current regime
+- model probabilities
+- current signal
+- selected option
+- confidence
+
+## Portfolio
+
+- capital
+- available capital
+- open positions
+- today's P&L
+- total P&L
+- drawdown
+
+## Trades
+
+- trade history
+- entry
+- exit
+- P&L
+- strategy
+- reason
+
+## Analytics
+
+- win rate
+- profit factor
+- expectancy
+- drawdown
+- monthly P&L
+- strategy comparison
+- regime performance
+
+## System
+
+- Angel One connection
+- WebSocket status
+- last market-data timestamp
+- model status
+- risk-engine status
+- kill-switch status
+
+---
+
+# 29. Configuration
+
+Use environment/config files.
+
+Example:
+
+ANGEL_API_KEY=
+ANGEL_CLIENT_ID=
+ANGEL_PASSWORD=
+ANGEL_TOTP=
+
+TRADING_MODE=PAPER
+
+INITIAL_CAPITAL=300000
+
+MAX_RISK_PER_TRADE=0.005
+
+MAX_DAILY_LOSS=0.015
+
+MAX_WEEKLY_LOSS=0.03
+
+MAX_DRAWDOWN=0.10
+
+AI_MIN_CONFIDENCE=0.65
+
+Do NOT commit secrets.
+
+Provide .env.example.
+
+IMPORTANT:
+
+TRADING_MODE must default to:
+
+PAPER
+
+Never default to LIVE.
+
+---
+
+# 30. Logging
+
+Implement structured logging.
+
+Every important event should log:
+
+- timestamp
+- component
+- event
+- details
+
+Examples:
+
+SIGNAL_GENERATED
+
+TRADE_REJECTED
+
+RISK_LIMIT_REACHED
+
+PAPER_ORDER_PLACED
+
+PAPER_ORDER_FILLED
+
+MODEL_PREDICTION
+
+BROKER_CONNECTION_ERROR
+
+DATA_STALE
+
+KILL_SWITCH_TRIGGERED
+
+Do not log passwords, API keys, TOTP values, or other secrets.
+
+---
+
+# 31. Testing
+
+Create unit tests for:
+
+- option contract selection
+- strike selection
+- feature calculations
+- probability calculations
+- expected value
+- position sizing
+- stop loss
+- risk limits
+- daily loss
+- spread construction
+- P&L
+- transaction costs
+- paper execution
+- market-session logic
+
+Create integration tests for:
+
+- Angel One authentication
+- instrument loading
+- market-data ingestion
+
+Where possible, mock Angel One responses.
+
+Do NOT require real API credentials to run the test suite.
+
+---
+
+# 32. Data Quality Checks
+
+Implement validation for:
+
+- missing timestamps
+- duplicate ticks
+- impossible prices
+- negative volume
+- negative OI
+- missing strikes
+- stale data
+- invalid option contracts
+- inconsistent expiry
+- timezone problems
+
+Bad data must not silently enter the model.
+
+---
+
+# 33. Development Stages
+
+Do NOT implement the entire system at once.
+
+Work incrementally.
+
+## Phase 1
+
+Project setup.
+
+Create:
+
+- repository structure
+- configuration
+- logging
+- database connection
+- tests
+- README
+
+Verify everything runs.
+
+## Phase 2
+
+Angel One integration.
+
+Implement:
+
+- authentication
+- instrument master
+- NIFTY identification
+- option contract lookup
+
+Do not place orders.
+
+## Phase 3
+
+Market-data collection.
+
+Collect:
+
+- NIFTY spot
+- NIFTY futures
+- selected option strikes
+
+Store data.
+
+## Phase 4
+
+Data normalization and validation.
+
+## Phase 5
+
+Feature engine.
+
+## Phase 6
+
+Baseline strategies.
+
+## Phase 7
+
+Backtesting engine.
+
+## Phase 8
+
+ML dataset and models.
+
+## Phase 9
+
+AI regime classifier.
+
+## Phase 10
+
+Hybrid strategy.
+
+## Phase 11
+
+Paper trading.
+
+## Phase 12
+
+Dashboard.
+
+## Phase 13
+
+Long-duration paper validation.
+
+## Phase 14
+
+ONLY after successful validation:
+Prepare live Angel One execution.
+
+---
+
+# 34. Important Research Philosophy
+
+Do not optimize solely for maximum returns.
+
+Optimize for:
+
+- positive expectancy
+- consistency
+- low drawdown
+- robustness
+- realistic execution
+- stability across market regimes
+
+A strategy with:
+
+30% annual return
+and
+8% drawdown
+
+may be preferable to:
+
+70% annual return
+and
+40% drawdown.
+
+---
+
+# 35. Avoid Overfitting
+
+Do NOT repeatedly tune parameters against the test period.
+
+If a parameter is changed because of test results, that period becomes part of development data.
+
+Maintain:
+
+TRAINING DATA
+
+VALIDATION DATA
+
+FINAL UNTOUCHED TEST DATA
+
+Keep a record of model versions and parameters.
+
+---
+
+# 36. AI Should NOT Control Everything
+
+Use deterministic rules where appropriate.
+
+AI:
+
+- estimates probabilities
+- classifies regime
+- filters trades
+
+Deterministic code:
+
+- selects valid contracts
+- calculates risk
+- calculates quantity
+- enforces limits
+- handles orders
+- prevents dangerous behavior
+
+Never allow an ML model to bypass the risk engine.
+
+---
+
+# 37. No Guaranteed Profit Claims
+
+The application and README should explicitly state:
+
+- This is experimental trading software.
+- Backtested performance does not guarantee future results.
+- Paper-trading results do not guarantee live performance.
+- Options trading involves substantial risk.
+- AI predictions are probabilistic.
+- Transaction costs and slippage can materially reduce returns.
+
+Do not advertise the system as a guaranteed income generator.
+
+---
+
+# 38. Live Trading Preparation
+
+When the system eventually supports LIVE mode:
+
+The architecture should be:
+
+Strategy
+    ↓
+Risk Engine
+    ↓
+Live Broker Adapter
+    ↓
+Angel One SmartAPI
+
+Do NOT allow:
+
+Strategy
+    ↓
+Angel One
+
+The risk engine must always be between strategy and execution.
+
+For live Angel One API order execution, account for Angel One's current API/static-IP and regulatory requirements at the time live trading is enabled.
+
+Do not assume today's broker requirements will remain unchanged.
+
+---
+
+# 39. Security
+
+Never hard-code:
+
+- API keys
+- passwords
+- TOTP secrets
+- client credentials
+
+Use environment variables or a secure secrets mechanism.
+
+Do not commit .env.
+
+Add:
+
+.env
+to .gitignore.
+
+---
+
+# 40. First Deliverable
+
+DO NOT build the entire application immediately.
+
+Start with Phase 1 and Phase 2.
+
+The first milestone should be:
+
+1. Create the repository.
+2. Create Python environment.
+3. Create project structure.
+4. Implement configuration.
+5. Implement logging.
+6. Implement Angel One client abstraction.
+7. Implement Angel One authentication.
+8. Retrieve instrument master.
+9. Find NIFTY spot.
+10. Find current NIFTY option contracts.
+11. Print a clean table containing:
+
+Underlying
+Expiry
+Strike
+CE/PE
+Symbol
+Token
+Lot Size
+
+12. Add tests.
+13. Add README instructions.
+
+DO NOT place an order.
+
+After completing this milestone, show:
+
+- files created
+- architecture
+- commands to run
+- test results
+- any Angel One configuration required
+- known limitations
+
+Then stop and wait for the next development phase.
+
+---
+
+# 41. Coding Standards
+
+Write production-quality code.
+
+Prefer:
+
+- type hints
+- dataclasses/Pydantic models
+- small functions
+- dependency injection
+- clear interfaces
+- unit tests
+- meaningful names
+- structured logging
+- configuration-driven behavior
+
+Avoid:
+
+- giant files
+- global mutable state
+- hard-coded tokens
+- hard-coded strikes
+- hard-coded expiry dates
+- magic numbers
+- duplicated broker logic
+- hidden network calls inside calculations
+
+Keep business logic independently testable without Internet access.
+
+---
+
+# 42. Critical Rule
+
+The goal is NOT:
+
+"Build me a profitable trading bot."
+
+The goal is:
+
+"Build me a scientifically testable quantitative trading platform that can determine whether a potentially profitable edge exists."
+
+If the research demonstrates that the strategy has no reliable edge, the correct result is to report that honestly rather than artificially tuning the model until the backtest looks profitable.
+
+

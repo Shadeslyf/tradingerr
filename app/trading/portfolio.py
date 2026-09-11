@@ -6,9 +6,13 @@ from typing import Dict, List, Any, Optional
 
 from app.database.models import SessionLocal
 from app.database.repositories import TradeRepository
+from app.broker.base import BrokerClient
+from app.risk.portfolio import RiskEngine
 
 class PaperPortfolioManager:
-    def __init__(self, stop_loss_pct: float = 15.0, take_profit_pct: float = 30.0):
+    def __init__(self, broker: BrokerClient, risk_engine: RiskEngine, stop_loss_pct: float = 15.0, take_profit_pct: float = 30.0):
+        self.broker = broker
+        self.risk_engine = risk_engine
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
         self.session = SessionLocal()
@@ -95,7 +99,19 @@ class PaperPortfolioManager:
         group_id = str(uuid.uuid4())
         logger.info(f"Executing NEW basket of {len(basket)} trades. Group: {group_id}")
         
+        total_entry_costs = 0.0
+        
         for leg in basket:
+            # Place order via broker
+            quantity = 50 # NIFTY lot
+            order_id = self.broker.place_order(leg['symbol'], leg['token'], leg['action'], quantity, leg['price'])
+            
+            # Retrieve exact executed details
+            executed_order = self.broker.orders[order_id]
+            actual_entry_price = executed_order['executed_price']
+            entry_costs = executed_order['transaction_costs']
+            total_entry_costs += entry_costs
+            
             trade_data = {
                 'group_id': group_id,
                 'action': leg['action'],
@@ -103,11 +119,15 @@ class PaperPortfolioManager:
                 'token': leg['token'],
                 'option_type': leg['option_type'],
                 'entry_time': timestamp,
-                'entry_price': leg['price'],
+                'entry_price': actual_entry_price, # Use broker's exact fill price
                 'status': 'OPEN'
             }
             self.repo.create_trade(trade_data)
-            self.current_prices[leg['token']] = leg['price']
+            self.current_prices[leg['token']] = actual_entry_price
+            
+        # Immediately deduct entry transaction costs from capital
+        self.risk_engine.current_capital -= total_entry_costs
+        logger.info(f"Deducted entry costs of ₹{total_entry_costs:.2f}. Capital: ₹{self.risk_engine.current_capital:.2f}")
             
         self.open_trades = self.repo.get_open_trades()
 
@@ -116,28 +136,52 @@ class PaperPortfolioManager:
             return
             
         total_pnl = 0.0
+        total_cash_pnl = 0.0
+        
         for trade in self.open_trades:
             entry = trade.entry_price
             exit_price = self.current_prices.get(trade.token, entry)
             
+            # Place closing order via broker
+            close_action = 'SELL' if trade.action == 'BUY' else 'BUY'
+            
+            # Simulate placing order
+            # The order ID is returned but we don't strictly need to track it here
+            # since the PaperBroker internally tracks it.
+            # We assume quantity is 50 for NIFTY lot
+            quantity = 50
+            order_id = self.broker.place_order(trade.symbol, trade.token, close_action, quantity, exit_price)
+            
+            # Retrieve exact executed details (simulating slippage/costs on exit)
+            executed_order = self.broker.orders[order_id]
+            actual_exit_price = executed_order['executed_price']
+            exit_costs = executed_order['transaction_costs']
+            
             if trade.action == 'BUY':
-                pnl = exit_price - entry
+                pnl = actual_exit_price - entry
+                cash_pnl = (pnl * quantity) - exit_costs
             else:
-                pnl = entry - exit_price
+                pnl = entry - actual_exit_price
+                cash_pnl = (pnl * quantity) - exit_costs
                 
             pnl_pct = (pnl / entry) * 100 if entry > 0 else 0
             total_pnl += pnl_pct
+            total_cash_pnl += cash_pnl
             
             update_data = {
                 'exit_time': timestamp,
-                'exit_price': exit_price,
+                'exit_price': actual_exit_price,
                 'pnl': pnl_pct,
                 'status': 'CLOSED',
                 'exit_reason': reason
             }
             self.repo.update_trade(trade.id, update_data)
             
-        logger.info(f"Closed {len(self.open_trades)} trades. Reason: {reason} | Net PnL: {total_pnl:.2f}%")
+        logger.info(f"Closed {len(self.open_trades)} trades. Reason: {reason} | Net PnL %: {total_pnl:.2f}% | Net Cash: ₹{total_cash_pnl:.2f}")
+        
+        # Apply the exact cash PnL to the Risk Engine
+        self.risk_engine.apply_trade_result(total_cash_pnl)
+        
         self.open_trades = []
         self.current_prices.clear()
         

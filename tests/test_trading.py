@@ -31,9 +31,32 @@ class MockTradeRepo:
     def get_open_trades(self):
         return [t for t in self.trades if getattr(t, 'status', '') == 'OPEN']
 
+class MockBroker:
+    def __init__(self):
+        self.orders = {}
+        self.order_id_counter = 1
+    def place_order(self, symbol, token, action, quantity, price, order_type="MARKET"):
+        order_id = str(self.order_id_counter)
+        self.order_id_counter += 1
+        self.orders[order_id] = {
+            'executed_price': price, # no slippage for test
+            'transaction_costs': 0.0 # no costs for simple test
+        }
+        return order_id
+
+class MockRiskEngine:
+    def __init__(self):
+        self.current_capital = 300000.0
+    def apply_trade_result(self, pnl):
+        self.current_capital += pnl
+
 def test_multi_leg_stop_loss():
-    portfolio = PaperPortfolioManager(stop_loss_pct=15.0, take_profit_pct=30.0)
+    broker = MockBroker()
+    risk_engine = MockRiskEngine()
+    portfolio = PaperPortfolioManager(broker, risk_engine, stop_loss_pct=15.0, take_profit_pct=30.0)
     portfolio.repo = MockTradeRepo()
+    portfolio.open_trades = []
+    portfolio.current_prices.clear()
     
     # Simulate Bull Put Spread
     # Sell ATM PE @ 100, Buy ATM-100 PE @ 50.
@@ -69,8 +92,12 @@ def test_multi_leg_stop_loss():
     assert closed_trades[0].exit_reason == 'SL'
 
 def test_iron_condor_take_profit():
-    portfolio = PaperPortfolioManager(stop_loss_pct=15.0, take_profit_pct=30.0)
+    broker = MockBroker()
+    risk_engine = MockRiskEngine()
+    portfolio = PaperPortfolioManager(broker, risk_engine, stop_loss_pct=15.0, take_profit_pct=30.0)
     portfolio.repo = MockTradeRepo()
+    portfolio.open_trades = []
+    portfolio.current_prices.clear()
     
     # Iron Condor (4 legs)
     basket = [

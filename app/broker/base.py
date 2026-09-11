@@ -22,3 +22,23 @@ class BrokerClient(ABC):
     @abstractmethod
     def get_instrument_master(self) -> List[Dict[str, Any]]:
         pass
+        
+    @abstractmethod
+    def get_quote(self, token: str) -> float:
+        pass
+        
+    @abstractmethod
+    def get_positions(self) -> List[Dict[str, Any]]:
+        pass
+        
+    @abstractmethod
+    def place_order(self, symbol: str, token: str, action: str, quantity: int, price: float, order_type: str = "MARKET") -> str:
+        pass
+        
+    @abstractmethod
+    def cancel_order(self, order_id: str) -> bool:
+        pass
+        
+    @abstractmethod
+    def get_order_status(self, order_id: str) -> str:
+        pass

@@ -19,6 +19,8 @@ from app.database.repositories import MarketDataRepository, SessionLocal
 from app.trading.portfolio import PaperPortfolioManager
 from app.trading.executor import PaperExecutor
 from app.features.feature_pipeline import FeaturePipeline
+from app.broker.paper import PaperBroker
+from app.risk.portfolio import RiskEngine
 
 # We simulate the Live feed by fetching the last 100 minutes of data from DB,
 # running features, and applying the model.
@@ -48,7 +50,10 @@ def live_paper_trading_loop():
     else:
         instrument_manager.load_instruments()
         
-    portfolio = PaperPortfolioManager(stop_loss_pct=15.0, take_profit_pct=30.0)
+    broker = PaperBroker()
+    risk_engine = RiskEngine(starting_capital=300000.0, max_risk_per_trade_pct=1.0)
+    
+    portfolio = PaperPortfolioManager(broker, risk_engine, stop_loss_pct=15.0, take_profit_pct=30.0)
     executor = PaperExecutor(portfolio, instrument_manager)
     
     # 2. Load Model
@@ -119,11 +124,11 @@ def live_paper_trading_loop():
             # 5. Portfolio tick check (Stop loss / Take profit)
             # In production, this is called on every websocket tick.
             # We simulate a tick event here for the currently held position.
-            if portfolio.current_trade:
-                held_token = portfolio.current_trade.token
-                # Simulate price movement
-                sim_ltp = latest_ticks.get(held_token, portfolio.current_trade.entry_price)
-                portfolio.on_tick(held_token, sim_ltp, current_time)
+            if portfolio.open_trades:
+                # In basket mode, we just need to pass the prices of the legs
+                for trade in portfolio.open_trades:
+                    sim_ltp = latest_ticks.get(trade.token, trade.entry_price)
+                    portfolio.on_tick(trade.token, sim_ltp, current_time)
 
             # Sleep until next minute
             time.sleep(60)
