@@ -81,5 +81,5 @@ class TradeRepository:
                 setattr(trade, key, value)
             self.session.commit()
             
-    def get_open_trade(self):
-        return self.session.query(self.model).filter_by(status='OPEN').first()
+    def get_open_trades(self):
+        return self.session.query(self.model).filter_by(status='OPEN').all()

@@ -49,6 +49,8 @@ class PaperTrade(Base):
     __tablename__ = 'paper_trades'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    group_id = Column(String(50), index=True, nullable=True) # Used to group multi-leg trades
+    action = Column(String(10), nullable=False, default='BUY') # BUY or SELL
     symbol = Column(String(50), index=True, nullable=False)
     token = Column(String(20), nullable=False)
     option_type = Column(String(2), nullable=False) # CE or PE
