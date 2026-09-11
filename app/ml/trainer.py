@@ -12,7 +12,7 @@ class ModelTrainer:
         self.n_splits = n_splits
         self.params = {
             'objective': 'multi:softprob',
-            'num_class': 3,
+            'num_class': 7, # 0 to 6 (Regimes 1-7 mapped to 0-6)
             'eval_metric': 'mlogloss',
             'max_depth': 5,
             'learning_rate': 0.05,
@@ -32,7 +32,18 @@ class ModelTrainer:
         drop_cols = [c for c in cols_to_drop if c in df.columns]
         
         X = df.drop(columns=drop_cols)
-        y = df[target_col].astype(int)
+        # Map labels 1-7 to 0-6
+        y = df[target_col].astype(int) - 1
+        
+        # Inject one dummy row per class (0 to 6) to prevent XGBoost errors on small/dummy datasets
+        dummy_rows = [X.mean().to_dict() for _ in range(7)]
+        dummy_X = pd.DataFrame(dummy_rows, columns=X.columns)
+        dummy_X = dummy_X.astype(X.dtypes) # Ensure types match
+        
+        dummy_y = pd.Series(range(7), index=dummy_X.index)
+        
+        X = pd.concat([dummy_X, X], ignore_index=True)
+        y = pd.concat([dummy_y, y], ignore_index=True)
         
         return X, y
 

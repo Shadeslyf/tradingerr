@@ -52,6 +52,30 @@ class ExpectedValueCalculator:
         }
 
     @staticmethod
+    def calculate_long_option(leg: Dict[str, Any], prob_win: float = 0.4, target_multiple: float = 2.0) -> Dict[str, Any]:
+        """
+        Calculates EV for a simple long option (buying a Call or Put).
+        We assume our target is `target_multiple` * premium.
+        """
+        premium = leg['price']
+        
+        # Max loss is 100% of the premium paid
+        max_loss = premium * 50 # lot size 50
+        
+        # Max profit is theoretically unlimited, but for EV we cap it at target
+        target_profit = (premium * target_multiple * 50) - max_loss
+        
+        ev = (prob_win * target_profit) - ((1 - prob_win) * max_loss)
+        
+        return {
+            'max_profit': float('inf'), # Theoretically
+            'max_loss': max_loss,
+            'ev': ev,
+            'net_credit': -premium * 50,
+            'spread_width': 0
+        }
+
+    @staticmethod
     def evaluate_iron_condor(call_spread: Dict[str, Any], put_spread: Dict[str, Any]) -> Dict[str, Any]:
         """
         Calculates the EV of an Iron Condor by summing the net credit of both spreads.

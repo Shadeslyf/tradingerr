@@ -13,11 +13,19 @@ class PaperExecutor:
         
     def process_signal(self, signal: int, spot_ltp: float, timestamp: datetime, latest_options_ticks: Dict[str, float]):
         """
-        Translates a Regime Signal into a Hybrid Multi-leg Strategy.
-        1: Bull Put Spread (Sell ATM PE, Buy ATM-100 PE)
-        2: Bear Call Spread (Sell ATM CE, Buy ATM+100 CE)
-        0: Iron Condor (Sell ATM+100 CE, Buy ATM+200 CE, Sell ATM-100 PE, Buy ATM-200 PE)
+        Translates a 7-Regime Signal into a Strategy.
+        1: STRONG_BULLISH -> Long Call
+        2: BULLISH -> Bull Put Spread
+        3: STRONG_BEARISH -> Long Put
+        4: BEARISH -> Bear Call Spread
+        5: RANGE -> Iron Condor
+        6: HIGH_VOLATILITY -> NO TRADE
+        7: UNCERTAIN -> NO TRADE
         """
+        if signal in [6, 7]:
+            logger.info(f"Signal {signal} (High Vol/Uncertain): NO TRADE.")
+            return
+
         try:
             atm_strike = self.instrument_manager.get_atm_strike(self.underlying, spot_ltp, step=50)
         except Exception as e:
@@ -31,19 +39,33 @@ class PaperExecutor:
         from app.strategies.expected_value import ExpectedValueCalculator
         
         if signal == 1:
-            logger.info(f"Signal 1 (Bullish): Building Bull Put Spread at ATM {atm_strike}")
+            logger.info(f"Signal 1 (STRONG_BULLISH): Building Long Call at ATM {atm_strike}")
+            basket = self._build_long_call(atm_strike, latest_options_ticks)
+            if len(basket) == 1:
+                # Mock EV for Long Option (needs better probability modeling in production)
+                # Assume max loss is premium paid.
+                ev_data = ExpectedValueCalculator.calculate_long_option(basket[0], prob_win=0.4, target_multiple=2.0)
+                
+        elif signal == 2:
+            logger.info(f"Signal 2 (BULLISH): Building Bull Put Spread at ATM {atm_strike}")
             basket = self._build_bull_put_spread(atm_strike, latest_options_ticks)
             if len(basket) == 2:
                 ev_data = ExpectedValueCalculator.calculate_credit_spread(basket[0], basket[1], prob_win)
                 
-        elif signal == 2:
-            logger.info(f"Signal 2 (Bearish): Building Bear Call Spread at ATM {atm_strike}")
+        elif signal == 3:
+            logger.info(f"Signal 3 (STRONG_BEARISH): Building Long Put at ATM {atm_strike}")
+            basket = self._build_long_put(atm_strike, latest_options_ticks)
+            if len(basket) == 1:
+                ev_data = ExpectedValueCalculator.calculate_long_option(basket[0], prob_win=0.4, target_multiple=2.0)
+                
+        elif signal == 4:
+            logger.info(f"Signal 4 (BEARISH): Building Bear Call Spread at ATM {atm_strike}")
             basket = self._build_bear_call_spread(atm_strike, latest_options_ticks)
             if len(basket) == 2:
                 ev_data = ExpectedValueCalculator.calculate_credit_spread(basket[0], basket[1], prob_win)
                 
-        elif signal == 0:
-            logger.info(f"Signal 0 (Range): Building Iron Condor around ATM {atm_strike}")
+        elif signal == 5:
+            logger.info(f"Signal 5 (RANGE): Building Iron Condor around ATM {atm_strike}")
             basket = self._build_iron_condor(atm_strike, latest_options_ticks)
             if len(basket) == 4:
                 call_ev = ExpectedValueCalculator.calculate_credit_spread(basket[0], basket[1], prob_win)
@@ -82,6 +104,16 @@ class PaperExecutor:
             'price': price,
             'strike': strike
         }
+
+    def _build_long_call(self, atm: float, prices: Dict[str, float]) -> List[Dict[str, Any]]:
+        leg = self._get_leg(atm, 'CE', 'BUY', prices)
+        if leg: return [leg]
+        return []
+
+    def _build_long_put(self, atm: float, prices: Dict[str, float]) -> List[Dict[str, Any]]:
+        leg = self._get_leg(atm, 'PE', 'BUY', prices)
+        if leg: return [leg]
+        return []
 
     def _build_bull_put_spread(self, atm: float, prices: Dict[str, float]) -> List[Dict[str, Any]]:
         # Sell ATM PE, Buy ATM-100 PE

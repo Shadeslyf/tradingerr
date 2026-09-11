@@ -104,8 +104,8 @@ def live_paper_trading_loop():
             
             # 3. Predict Market Regime
             probs = model.predict_proba(X)[0]
-            pred_class = int(np.argmax(probs))
-            confidence = probs[pred_class]
+            pred_class = int(np.argmax(probs)) + 1 # Add 1 because we trained on 0-6 for 1-7
+            confidence = probs[pred_class - 1]
             
             spot_ltp = df['close'].iloc[-1]
             logger.info(f"Time: {current_time.strftime('%H:%M')} | Spot: {spot_ltp} | Pred: {pred_class} | Conf: {confidence:.2f}")

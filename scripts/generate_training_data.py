@@ -8,7 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database.models import SessionLocal, OHLCV
 from app.features.feature_pipeline import FeaturePipeline
-from app.ml.labeling import TripleBarrierLabeler
+from app.ml.labeling import RegimeLabeler
 
 def generate_dataset():
     logger.info("Starting Training Dataset Generation...")
@@ -22,8 +22,24 @@ def generate_dataset():
     df = pd.read_sql(query.statement, session.bind)
     
     if df.empty:
-        logger.error("No OHLCV data found in the database. Run the collector and normalizer first.")
-        return
+        logger.warning("No OHLCV data found in DB. Generating 30 days of dummy data for training pipeline testing...")
+        import numpy as np
+        dates = pd.date_range(end=datetime.now(), periods=30*375, freq='min')
+        np_random = pd.Series(1 + (pd.Series(range(len(dates))).apply(lambda x: 0.0001 * (np.random.random() - 0.5))))
+        close = 24000 * np_random.cumprod()
+        df = pd.DataFrame({
+            'timestamp': dates,
+            'open': close,
+            'high': close + 10,
+            'low': close - 10,
+            'close': close,
+            'volume': 1000000
+        })
+        # Filter trading hours
+        df = df[(df.timestamp.dt.hour >= 9) & (df.timestamp.dt.hour <= 15)]
+        df = df[~((df.timestamp.dt.hour == 9) & (df.timestamp.dt.minute < 15))]
+        df = df[~((df.timestamp.dt.hour == 15) & (df.timestamp.dt.minute > 30))]
+        df = df.reset_index(drop=True)
 
     logger.info(f"Loaded {len(df)} OHLCV candles.")
     
@@ -37,13 +53,14 @@ def generate_dataset():
         return
 
     # 2. Labeling
-    logger.info("Applying Triple Barrier Labeling...")
-    # Using 60 min horizon, 0.2% up/down barriers
-    labeled_df = TripleBarrierLabeler.apply_triple_barrier(
+    logger.info("Applying Advanced Regime Labeling (7 Classes)...")
+    labeled_df = RegimeLabeler.apply_advanced_regime_labeling(
         features_df, 
         horizon=60, 
-        upper_barrier_pct=0.2, 
-        lower_barrier_pct=0.2
+        r_strong_pct=0.3, 
+        r_weak_pct=0.15,
+        v_high_pct=0.6,
+        v_mid_pct=0.3
     )
     
     # Drop rows at the end where label is NaN (due to horizon cut-off)
