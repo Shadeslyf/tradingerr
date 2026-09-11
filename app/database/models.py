@@ -45,6 +45,21 @@ class OptionContract(Base):
     token = Column(String(20), unique=True, nullable=False)
     lot_size = Column(Integer, nullable=False)
 
+class PaperTrade(Base):
+    __tablename__ = 'paper_trades'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(50), index=True, nullable=False)
+    token = Column(String(20), nullable=False)
+    option_type = Column(String(2), nullable=False) # CE or PE
+    entry_time = Column(DateTime, nullable=False)
+    entry_price = Column(Float, nullable=False)
+    exit_time = Column(DateTime, nullable=True)
+    exit_price = Column(Float, nullable=True)
+    pnl = Column(Float, nullable=True)
+    status = Column(String(20), default='OPEN') # OPEN, CLOSED
+    exit_reason = Column(String(50), nullable=True) # SL, TP, EOD, SIGNAL
+    
 # Initialize engine and session factory
 engine = create_engine(settings.db_url, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

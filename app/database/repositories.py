@@ -61,3 +61,25 @@ class OptionContractRepository:
         if new_contracts:
             self.session.add_all(new_contracts)
             self.session.commit()
+
+class TradeRepository:
+    def __init__(self, session: Session):
+        self.session = session
+        from app.database.models import PaperTrade
+        self.model = PaperTrade
+        
+    def create_trade(self, trade_data: Dict[str, Any]) -> int:
+        trade = self.model(**trade_data)
+        self.session.add(trade)
+        self.session.commit()
+        return trade.id
+        
+    def update_trade(self, trade_id: int, update_data: Dict[str, Any]):
+        trade = self.session.query(self.model).filter_by(id=trade_id).first()
+        if trade:
+            for key, value in update_data.items():
+                setattr(trade, key, value)
+            self.session.commit()
+            
+    def get_open_trade(self):
+        return self.session.query(self.model).filter_by(status='OPEN').first()
