@@ -56,9 +56,58 @@ def run_baseline_backtest():
         else:
             logger.info(f"{k}: {v}")
             
+def run_ml_backtest():
+    import glob
+    import joblib
+    from app.features.feature_pipeline import FeaturePipeline
+    
+    df = generate_dummy_backtest_data(30)
+    df.set_index('timestamp', inplace=True, drop=False)
+    
+    # We need to calculate features to feed the model
+    logger.info("Calculating features for ML backtest...")
+    features_df = FeaturePipeline.generate_features(df, options_ohlcv=None)
+    
+    # We drop NaN features resulting from rolling windows
+    features_df = features_df.dropna()
+    # Align the price df with features
+    df = df.loc[features_df.index]
+    
+    logger.info("Loading latest ML model...")
+    model_files = glob.glob("data/models/xgboost_regime_*.pkl")
+    if not model_files:
+        logger.error("No model found. Train model first.")
+        return
+        
+    latest_model = max(model_files, key=os.path.getctime)
+    model = joblib.load(latest_model)
+    
+    drop_cols = ['label', 'timestamp', 'symbol', 'token', 'exchange']
+    X = features_df.drop(columns=[c for c in drop_cols if c in features_df.columns])
+    
+    logger.info("Predicting regimes...")
+    probs = model.predict_proba(X)
+    # Get max prob index and add 1 (since 0-6 maps to 1-7 regimes)
+    pred_classes = np.argmax(probs, axis=1) + 1
+    signals = pd.Series(pred_classes, index=df.index)
+    
+    logger.info(f"Signal Distribution: {signals.value_counts().to_dict()}")
+    
+    engine = BacktestEngine(initial_capital=300000.0, slippage_pct=0.005)
+    orders = engine.run(df, signals)
+    
+    metrics = Metrics.from_pnl_series(engine.risk_engine.trade_pnls, engine.risk_engine.starting_capital)
+    
+    logger.info("--- ML BACKTEST METRICS ---")
+    for k, v in metrics.items():
+        if isinstance(v, float):
+            logger.info(f"{k}: {v:.2f}")
+        else:
+            logger.info(f"{k}: {v}")
+
 if __name__ == '__main__':
     # Fix pandas np.random deprecation
     import numpy as np
     pd.np = np
     
-    run_baseline_backtest()
+    run_ml_backtest()

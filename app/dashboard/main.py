@@ -27,40 +27,49 @@ df_active = load_active_positions(session)
 
 # ----------------- TOP METRICS -----------------
 st.subheader("Performance Overview")
+
+INITIAL_CAPITAL = 300000.0
+
 if not df_history.empty:
     total_trades = len(df_history)
-    winning_trades = len(df_history[df_history['Net PnL %'] > 0])
+    winning_trades = len(df_history[df_history['Cash PnL (₹)'] > 0])
     win_rate = (winning_trades / total_trades) * 100
-    avg_pnl = df_history['Net PnL %'].mean()
-    total_pnl = df_history['Net PnL %'].sum()
+    total_cash_pnl = df_history['Cash PnL (₹)'].sum()
+    final_capital = INITIAL_CAPITAL + total_cash_pnl
     
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Trades", total_trades)
-    col2.metric("Win Rate", f"{win_rate:.1f}%")
-    col3.metric("Cumulative PnL", f"{total_pnl:.1f}%", delta=f"{total_pnl:.1f}%")
-    col4.metric("Avg PnL per Trade", f"{avg_pnl:.1f}%")
+    # Calculate losses only
+    losing_trades = df_history[df_history['Cash PnL (₹)'] < 0]
+    total_losses = losing_trades['Cash PnL (₹)'].sum()
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Initial Capital", f"₹{INITIAL_CAPITAL:,.2f}")
+    col2.metric("Final Capital", f"₹{final_capital:,.2f}", delta=f"₹{total_cash_pnl:,.2f}")
+    col3.metric("Total Trades", total_trades)
+    col4.metric("Win Rate", f"{win_rate:.1f}%")
+    col5.metric("Total Losses", f"₹{total_losses:,.2f}")
 else:
     st.info("No closed trades yet. Run the paper trading engine to generate history.")
 
 st.markdown("---")
 
 # ----------------- EQUITY CURVE -----------------
-st.subheader("Cumulative Equity Curve")
+st.subheader("Cumulative Equity Curve (₹)")
 if not df_history.empty:
     # Sort by time to calculate cumulative PnL correctly
     df_chart = df_history.sort_values('Entry Time').copy()
-    df_chart['Cumulative PnL'] = df_chart['Net PnL %'].cumsum()
+    df_chart['Cumulative PnL (₹)'] = df_chart['Cash PnL (₹)'].cumsum()
+    df_chart['Equity'] = INITIAL_CAPITAL + df_chart['Cumulative PnL (₹)']
     
     fig = px.line(
         df_chart, 
         x='Exit Time', 
-        y='Cumulative PnL', 
-        title="Portfolio Growth (%)",
+        y='Equity', 
+        title="Portfolio Growth (₹)",
         markers=True,
         template="plotly_dark"
     )
-    # Add a zero line
-    fig.add_hline(y=0, line_dash="dash", line_color="gray")
+    # Add a zero line at initial capital
+    fig.add_hline(y=INITIAL_CAPITAL, line_dash="dash", line_color="gray")
     fig.update_traces(line_color='#00ff88', marker=dict(size=8))
     st.plotly_chart(fig, use_container_width=True)
 else:

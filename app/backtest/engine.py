@@ -22,9 +22,9 @@ class BacktestEngine:
         # We need a mock instrument manager for tests
         class MockInstrumentManager:
             def get_atm_strike(self, underlying, spot, step=50):
-                return round(spot / step) * step
+                return int(round(spot / step) * step)
             def get_option_token(self, underlying, strike, option_type):
-                return f"{underlying}_{strike}_{option_type}"
+                return f"{underlying}_{int(strike)}_{option_type}"
             def get_symbol_from_token(self, token):
                 return token
                 
@@ -80,14 +80,14 @@ class BacktestEngine:
                 continue
                 
             # 3. Process New Signals if Flat
-            if not self.portfolio.open_trades and signal in [0, 1, 2]:
+            if not self.portfolio.open_trades and signal in [1, 2, 3, 4, 5, 6, 7]:
                 # Generate mock option prices for the executor
-                atm = round(spot / 50) * 50
+                atm = int(round(spot / 50) * 50)
                 strikes = [atm - 200, atm - 100, atm, atm + 100, atm + 200]
                 latest_ticks = {}
                 for k in strikes:
-                    latest_ticks[f"NIFTY_{k}_CE"] = self.simulate_option_price(spot, k, 'CE', 1.0)
-                    latest_ticks[f"NIFTY_{k}_PE"] = self.simulate_option_price(spot, k, 'PE', 1.0)
+                    latest_ticks[f"NIFTY_{int(k)}_CE"] = self.simulate_option_price(spot, k, 'CE', 1.0)
+                    latest_ticks[f"NIFTY_{int(k)}_PE"] = self.simulate_option_price(spot, k, 'PE', 1.0)
                     
                 self.executor.process_signal(signal, spot, timestamp, latest_ticks)
                 

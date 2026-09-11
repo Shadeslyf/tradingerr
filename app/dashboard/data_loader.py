@@ -56,9 +56,17 @@ def load_trade_history(session: Session) -> pd.DataFrame:
         exit_time = group['exit_time'].max()
         exit_reason = group.iloc[0]['exit_reason'] # Assume same for group
         
-        # We calculated the exact PnL% of the basket when closing.
-        # We can just take the mean of the pnl_pct for the group since the PortfolioManager 
-        # stores the same net pnl_pct on all legs of a closed group!
+        # Calculate cash PnL (Assume lot size 50 for NIFTY)
+        cash_pnl = 0.0
+        for _, row in group.iterrows():
+            if row['action'] == 'BUY':
+                gross = (row['exit_price'] - row['entry_price']) * 50
+            else:
+                gross = (row['entry_price'] - row['exit_price']) * 50
+            # Rough estimate of transaction costs to make it realistic on dashboard
+            costs = 120 if strategy == "Iron Condor" else 60 if "Spread" in strategy else 30
+            cash_pnl += (gross - costs/legs) # distribute cost per leg
+            
         net_pnl_pct = group['pnl_pct'].mean()
         
         grouped.append({
@@ -66,6 +74,7 @@ def load_trade_history(session: Session) -> pd.DataFrame:
             'Entry Time': entry_time,
             'Exit Time': exit_time,
             'Net PnL %': round(net_pnl_pct, 2),
+            'Cash PnL (₹)': round(cash_pnl, 2),
             'Exit Reason': exit_reason,
             'Legs': legs
         })
