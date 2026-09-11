@@ -4,14 +4,15 @@ from loguru import logger
 
 class RegimeLabeler:
     """
-    Advanced Regime Labeler for 7 Market Regimes:
-    1: STRONG_BULLISH
-    2: BULLISH
-    3: STRONG_BEARISH
-    4: BEARISH
-    5: RANGE
-    6: HIGH_VOLATILITY
-    7: UNCERTAIN
+    Regime Labeler supporting two modes:
+
+    7-class (apply_advanced_regime_labeling):
+        1: STRONG_BULLISH  2: BULLISH  3: STRONG_BEARISH
+        4: BEARISH         5: RANGE    6: HIGH_VOLATILITY  7: UNCERTAIN
+
+    3-class (apply_3class_regime_labeling):
+        1: BULLISH   2: RANGE   3: BEARISH
+        Simpler, more balanced, directly tradeable.
     """
     
     @staticmethod
@@ -79,4 +80,50 @@ class RegimeLabeler:
         df.loc[df.index[-horizon:], 'label'] = np.nan
         
         logger.info(f"Regime Labeling complete. Distribution: {df['label'].value_counts().to_dict()}")
+        return df
+
+    @staticmethod
+    def apply_3class_regime_labeling(
+        df: pd.DataFrame,
+        horizon: int = 60,
+        threshold_pct: float = 0.1,
+    ) -> pd.DataFrame:
+        """
+        Simplified 3-class regime labeling — more balanced & directly tradeable:
+            1 = BULLISH  — forward close return > +threshold_pct %
+            2 = RANGE    — |forward close return| <= threshold_pct %
+            3 = BEARISH  — forward close return < -threshold_pct %
+
+        Args:
+            df:            DataFrame with 'close' column (timestamp as index).
+            horizon:       Bars to look forward (default 60 min = 1 hour).
+            threshold_pct: % move to classify as directional (default 0.1%).
+        """
+        if 'close' not in df.columns:
+            raise ValueError("DataFrame must contain a 'close' column.")
+
+        df = df.copy()
+        closes = df['close'].values
+        n = len(closes)
+        labels = np.full(n, np.nan)
+
+        threshold = threshold_pct / 100.0
+
+        for i in range(n - horizon):
+            p0    = closes[i]
+            p_end = closes[i + horizon]
+            fwd   = (p_end - p0) / p0
+
+            if fwd > threshold:
+                labels[i] = 1   # BULLISH
+            elif fwd < -threshold:
+                labels[i] = 3   # BEARISH
+            else:
+                labels[i] = 2   # RANGE
+
+        df['label'] = labels
+        dist = df['label'].value_counts().sort_index().to_dict()
+        readable = {1.0: 'BULLISH', 2.0: 'RANGE', 3.0: 'BEARISH'}
+        dist_named = {readable.get(k, k): int(v) for k, v in dist.items()}
+        logger.info(f"3-Class Regime Labeling complete. Distribution: {dist_named}")
         return df

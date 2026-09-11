@@ -1,0 +1,24 @@
+2026-09-11 22:24:26.350 | INFO     | __main__:main:239 - Loading model from models/walk_forward/best_model.joblib
+2026-09-11 22:24:27.141 | INFO     | __main__:main:241 - Model loaded successfully.
+2026-09-11 22:24:27.142 | INFO     | __main__:main:244 - 
+=== BACKTEST 1: Jan 2026 → Apr 2026 (₹1,00,000 capital) ===
+2026-09-11 22:24:27.535 | INFO     | __main__:main:250 - Slice: 28,080 bars  (2026-01-01 → 2026-04-23)
+2026-09-11 22:24:27.538 | INFO     | app.features.feature_pipeline:generate_features:26 - Calculating Price Features...
+2026-09-11 22:24:27.550 | INFO     | app.features.feature_pipeline:generate_features:33 - Calculating Market Structure Features...
+2026-09-11 22:24:27.589 | INFO     | app.features.feature_pipeline:generate_features:37 - Calculating Time Features...
+2026-09-11 22:24:27.594 | INFO     | app.features.feature_pipeline:generate_features:48 - Feature pipeline complete. Dropped 0 rows due to rolling window warm-up.
+2026-09-11 22:24:27.600 | INFO     | app.ml.labeling:apply_3class_regime_labeling:128 - 3-Class Regime Labeling complete. Distribution: {'BULLISH': 8904, 'RANGE': 9122, 'BEARISH': 9994}
+2026-09-11 22:24:28.836 | INFO     | __main__:main:260 - Result saved: data/backtest_results/backtest_jan_apr_2026.json
+2026-09-11 22:24:28.836 | INFO     | __main__:main:261 -   Net P&L: ₹163,595.86  |  Return: 163.6%  |  Trades: 512  |  Win Rate: 50.0%
+2026-09-11 22:24:28.836 | INFO     | __main__:main:267 - 
+=== BACKTEST 2: Real 30-Day Data (Aug–Sep 2026) ===
+2026-09-11 22:24:28.856 | INFO     | __main__:main:269 - Real data: 8,316 bars  (2026-08-12 → 2026-09-11)
+2026-09-11 22:24:28.859 | INFO     | app.features.feature_pipeline:generate_features:26 - Calculating Price Features...
+2026-09-11 22:24:28.865 | INFO     | app.features.feature_pipeline:generate_features:33 - Calculating Market Structure Features...
+2026-09-11 22:24:28.880 | INFO     | app.features.feature_pipeline:generate_features:37 - Calculating Time Features...
+2026-09-11 22:24:28.882 | INFO     | app.features.feature_pipeline:generate_features:48 - Feature pipeline complete. Dropped 0 rows due to rolling window warm-up.
+2026-09-11 22:24:28.884 | INFO     | app.ml.labeling:apply_3class_regime_labeling:128 - 3-Class Regime Labeling complete. Distribution: {'BULLISH': 1564, 'RANGE': 4355, 'BEARISH': 2337}
+2026-09-11 22:24:29.370 | INFO     | __main__:main:281 - Result saved: data/backtest_results/backtest_30d_live.json
+2026-09-11 22:24:29.370 | INFO     | __main__:main:282 -   Net P&L: ₹-24,668.51  |  Return: -9.36%  |  Trades: 139  |  Win Rate: 41.73%
+2026-09-11 22:24:29.398 | INFO     | __main__:main:296 - 
+Combined results saved: data/backtest_results/combined_results.json

@@ -59,3 +59,15 @@ class AngelOneBroker(BrokerClient):
         except Exception as e:
             logger.error(f"Failed to fetch instrument master: {e}")
             return []
+
+    # Implement abstract methods
+    def get_quote(self, symbol: str, token: str) -> Dict[str, Any]:
+        return {}
+    def place_order(self, symbol: str, token: str, action: str, quantity: int, price: float = 0.0, order_type: str = 'MARKET') -> str:
+        return "dummy_id"
+    def cancel_order(self, order_id: str) -> bool:
+        return True
+    def get_order_status(self, order_id: str) -> Dict[str, Any]:
+        return {}
+    def get_positions(self) -> List[Dict[str, Any]]:
+        return []

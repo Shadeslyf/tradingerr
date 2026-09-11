@@ -2,10 +2,8 @@ venv/
 __pycache__/
 *.pyc
 .env
-data/raw/*
-data/processed/*
-data/features/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-!data/features/.gitkeep
+data/
+models/
+logs/
+.DS_Store
 .pytest_cache/
