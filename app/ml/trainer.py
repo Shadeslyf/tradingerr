@@ -1,0 +1,91 @@
+import os
+import joblib
+import pandas as pd
+import numpy as np
+from loguru import logger
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import classification_report, f1_score, precision_score, recall_score, confusion_matrix
+
+class ModelTrainer:
+    def __init__(self, n_splits=5):
+        self.n_splits = n_splits
+        self.params = {
+            'n_estimators': 100,
+            'max_depth': 10,
+            'min_samples_split': 5,
+            'random_state': 42,
+            'n_jobs': -1 # use all cores
+        }
+        self.model = RandomForestClassifier(**self.params)
+
+    def prepare_data(self, df: pd.DataFrame, target_col='label'):
+        # Drop rows with missing labels or essential features
+        df = df.dropna(subset=[target_col]).copy()
+        
+        # In a real pipeline, we'd drop non-feature columns
+        cols_to_drop = [target_col, 'timestamp', 'symbol', 'token', 'exchange']
+        drop_cols = [c for c in cols_to_drop if c in df.columns]
+        
+        X = df.drop(columns=drop_cols)
+        y = df[target_col].astype(int)
+        
+        return X, y
+
+    def train_with_cv(self, X: pd.DataFrame, y: pd.Series):
+        """
+        Uses TimeSeriesSplit to do walk-forward validation and evaluate metrics.
+        Returns the trained model on the full dataset.
+        """
+        tscv = TimeSeriesSplit(n_splits=self.n_splits)
+        
+        precisions = []
+        recalls = []
+        f1_scores = []
+        
+        logger.info(f"Starting Walk-Forward Cross Validation (splits={self.n_splits})...")
+        
+        for fold, (train_index, test_index) in enumerate(tscv.split(X)):
+            X_train, X_test = X.iloc[train_index], X.iloc[test_index]
+            y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+            
+            # Use early stopping if desired, but for basic CV we just fit
+            model = RandomForestClassifier(**self.params)
+            model.fit(X_train, y_train)
+            
+            y_pred = model.predict(X_test)
+            
+            # We use 'macro' to get unweighted average across classes 0, 1, 2
+            # because class imbalance is common in regime labeling.
+            p = precision_score(y_test, y_pred, average='macro', zero_division=0)
+            r = recall_score(y_test, y_pred, average='macro', zero_division=0)
+            f1 = f1_score(y_test, y_pred, average='macro', zero_division=0)
+            
+            precisions.append(p)
+            recalls.append(r)
+            f1_scores.append(f1)
+            
+            logger.debug(f"Fold {fold+1} - Precision: {p:.4f}, Recall: {r:.4f}, F1: {f1:.4f}")
+            
+        logger.info(f"CV Complete. Avg Precision: {np.mean(precisions):.4f}, Avg F1: {np.mean(f1_scores):.4f}")
+        
+        # Train on entire dataset after CV
+        logger.info("Training final model on full dataset...")
+        self.model.fit(X, y)
+        logger.info("Final model training complete.")
+        
+        # Print final confusion matrix on the training set just for a quick sanity check
+        # (It will be overfitted, but good to see if it predicts all classes)
+        y_train_pred = self.model.predict(X)
+        logger.info(f"Final Model Confusion Matrix (In-Sample):\n{confusion_matrix(y, y_train_pred)}")
+        
+        return self.model
+
+    def save_model(self, filepath: str):
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        joblib.dump(self.model, filepath)
+        logger.info(f"Model saved to {filepath}")
+        
+    def load_model(self, filepath: str):
+        self.model = joblib.load(filepath)
+        logger.info(f"Model loaded from {filepath}")
