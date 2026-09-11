@@ -20,3 +20,66 @@
 2026-09-11 17:22:09 | INFO     | app.market.instruments:_preprocess:14 - Preprocessing instrument data...
 2026-09-11 17:22:09 | INFO     | __main__:main:34 - Found NIFTY Spot: Symbol: Nifty 50, Token: 99926000
 2026-09-11 17:22:09 | INFO     | __main__:main:43 - Found 1636 NIFTY option contracts.
+2026-09-11 17:48:46 | INFO     | __main__:main:16 - Starting AI-Based Indian Options Trading System - Phase 1 & 2
+2026-09-11 17:48:46 | INFO     | app.broker.angel_one:login:24 - Attempting login for client ID: AACL637385
+2026-09-11 17:48:47 | INFO     | app.broker.angel_one:login:41 - Successfully logged into Angel One.
+2026-09-11 17:48:47 | INFO     | app.broker.angel_one:get_instrument_master:51 - Fetching instrument master from https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json
+2026-09-11 17:49:08 | INFO     | app.broker.angel_one:get_instrument_master:57 - Successfully fetched 146966 instruments.
+2026-09-11 17:49:08 | INFO     | app.market.instruments:_preprocess:14 - Preprocessing instrument data...
+2026-09-11 17:49:08 | INFO     | __main__:main:34 - Found NIFTY Spot: Symbol: Nifty 50, Token: 99926000
+2026-09-11 17:49:08 | INFO     | __main__:main:43 - Found 1636 NIFTY option contracts.
+2026-09-11 17:59:57 | INFO     | app.data.ingestion.collector:start:26 - Starting Market Data Collector...
+2026-09-11 17:59:57 | INFO     | app.broker.angel_one:login:24 - Attempting login for client ID: AACL637385
+2026-09-11 17:59:57 | INFO     | app.broker.angel_one:login:41 - Successfully logged into Angel One.
+2026-09-11 17:59:57 | INFO     | app.broker.angel_one:get_instrument_master:51 - Fetching instrument master from https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json
+2026-09-11 18:00:04 | INFO     | app.broker.angel_one:get_instrument_master:57 - Successfully fetched 146966 instruments.
+2026-09-11 18:00:04 | INFO     | app.market.instruments:_preprocess:14 - Preprocessing instrument data...
+2026-09-11 18:00:04 | INFO     | app.data.ingestion.collector:start:55 - Current NIFTY Spot LTP: 23398.1
+2026-09-11 18:00:04 | INFO     | app.data.ingestion.collector:start:66 - Calculated ATM Strike: 23400
+2026-09-11 18:00:04 | INFO     | app.data.ingestion.collector:start:86 - Selected 42 option contracts for collection.
+2026-09-11 18:00:04 | INFO     | app.data.ingestion.collector:start:143 - Connecting to WebSocket...
+2026-09-11 18:00:04 | INFO     | app.data.ingestion.collector:on_open:128 - WebSocket opened.
+2026-09-11 18:00:04 | INFO     | app.data.ingestion.collector:on_open:130 - Subscribed to tokens: [{'exchangeType': 1, 'tokens': ['99926000']}, {'exchangeType': 2, 'tokens': ['47273', '47274', '47275', '47276', '47277', '47278', '47280', '47279', '47281', '47282', '47284', '47283', '47285', '47286', '47287', '47288', '47289', '47290', '47292', '47291', '47293', '47294', '47295', '47296', '47298', '47297', '47299', '47300', '47302', '47301', '47303', '47304', '47306', '47305', '47307', '47308', '47309', '47310', '47311', '47312', '47316', '47315']}]
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 99926000 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47315 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47316 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47278 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47311 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47279 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47312 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47290 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47291 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47276 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47298 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47277 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47299 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47310 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47274 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47296 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47275 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47297 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47294 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47273 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47295 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47292 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47293 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47306 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47307 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47304 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47305 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47302 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47303 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47289 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47300 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47301 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47308 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47309 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47280 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47287 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47288 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47285 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47286 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47283 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47284 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47281 | 0.0
+2026-09-11 18:00:04 | DEBUG    | app.data.ingestion.collector:_handle_tick:187 - Tick saved: 47282 | 0.0

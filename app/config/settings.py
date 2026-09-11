@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     max_drawdown: float = Field(default=0.10)
     ai_min_confidence: float = Field(default=0.65)
 
+    # Database Configuration
+    db_url: str = Field(default="postgresql://trading_user:trading_password@localhost:5432/market_data")
+    
+    # Market Data Collection
+    strike_range: int = Field(default=10)
+    data_collection_interval: int = Field(default=60) # seconds
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()
