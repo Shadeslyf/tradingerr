@@ -17,6 +17,29 @@ class MarketDataRepository:
         self.session.add_all(ticks)
         self.session.commit()
 
+    def get_ticks_since(self, since_timestamp: datetime) -> List[MarketTick]:
+        return self.session.query(MarketTick).filter(MarketTick.timestamp >= since_timestamp).order_by(MarketTick.timestamp.asc()).all()
+
+    def get_all_ticks(self) -> List[MarketTick]:
+        return self.session.query(MarketTick).order_by(MarketTick.timestamp.asc()).all()
+
+    def delete_ticks_before(self, before_timestamp: datetime):
+        self.session.query(MarketTick).filter(MarketTick.timestamp < before_timestamp).delete()
+        self.session.commit()
+
+class OHLCVRepository:
+    def __init__(self, session: Session):
+        self.session = session
+
+    def save_ohlcv_bulk(self, ohlcv_data_list: List[Dict[str, Any]]):
+        from app.database.models import OHLCV
+        new_candles = []
+        for data in ohlcv_data_list:
+            new_candles.append(OHLCV(**data))
+        if new_candles:
+            self.session.add_all(new_candles)
+            self.session.commit()
+
 class OptionContractRepository:
     def __init__(self, session: Session):
         self.session = session
