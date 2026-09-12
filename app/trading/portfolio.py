@@ -83,7 +83,7 @@ class PaperPortfolioManager:
             logger.success(f"TAKE PROFIT HIT! Net PnL: {pnl_pct:.2f}%")
             self._close_all_trades(timestamp, "TP")
 
-    def execute_basket(self, basket: List[Dict[str, Any]], signal: int, timestamp: datetime):
+    def execute_basket(self, basket: List[Dict[str, Any]], signal: int, timestamp: datetime, quantity: int = 50):
         """
         Executes a group of trades simultaneously.
         basket format: [{'action': 'BUY', 'token': '123', 'symbol': '...', 'option_type': 'CE', 'price': 100.0}]
@@ -102,8 +102,7 @@ class PaperPortfolioManager:
         total_entry_costs = 0.0
         
         for leg in basket:
-            # Place order via broker
-            quantity = 50 # NIFTY lot
+            # Place order via broker using dynamic quantity
             order_id = self.broker.place_order(leg['symbol'], leg['token'], leg['action'], quantity, leg['price'])
             
             # Retrieve exact executed details
@@ -120,6 +119,7 @@ class PaperPortfolioManager:
                 'option_type': leg['option_type'],
                 'entry_time': timestamp,
                 'entry_price': actual_entry_price, # Use broker's exact fill price
+                'quantity': quantity,
                 'status': 'OPEN'
             }
             self.repo.create_trade(trade_data)
@@ -148,9 +148,9 @@ class PaperPortfolioManager:
             # Simulate placing order
             # The order ID is returned but we don't strictly need to track it here
             # since the PaperBroker internally tracks it.
-            # We assume quantity is 50 for NIFTY lot
-            quantity = 50
-            order_id = self.broker.place_order(trade.symbol, trade.token, close_action, quantity, exit_price)
+            # Get quantity from trade, default to 50 if missing (legacy trades)
+            trade_qty = getattr(trade, 'quantity', 50)
+            order_id = self.broker.place_order(trade.symbol, trade.token, close_action, trade_qty, exit_price)
             
             # Retrieve exact executed details (simulating slippage/costs on exit)
             executed_order = self.broker.orders[order_id]
@@ -159,10 +159,10 @@ class PaperPortfolioManager:
             
             if trade.action == 'BUY':
                 pnl = actual_exit_price - entry
-                cash_pnl = (pnl * quantity) - exit_costs
+                cash_pnl = (pnl * trade_qty) - exit_costs
             else:
                 pnl = entry - actual_exit_price
-                cash_pnl = (pnl * quantity) - exit_costs
+                cash_pnl = (pnl * trade_qty) - exit_costs
                 
             pnl_pct = (pnl / entry) * 100 if entry > 0 else 0
             total_pnl += pnl_pct

@@ -5,6 +5,8 @@ from app.features.price_features import PriceFeatures
 from app.features.market_structure import MarketStructureFeatures
 from app.features.time_features import TimeFeatures
 from app.features.options_features import OptionsFeatures
+from app.features.cross_asset import CrossAssetFeatures
+from app.features.professional_features import ProfessionalFeatures
 
 
 class FeaturePipeline:
@@ -21,7 +23,8 @@ class FeaturePipeline:
           5. NEW — Bollinger Bands: bb_width, bb_pos, bb_squeeze
           6. Market Structure:      intraday highs/lows, opening range, gap
           7. Time:                  hour, minute, day_of_week, session timing
-          8. Options (optional):    PCR if options data provided
+          8. Cross-Asset (V2):      VIX slope/spike, Bank Nifty relative strength & divergence
+          9. Options (optional):    PCR if options data provided
         """
         if spot_ohlcv.empty:
             return spot_ohlcv
@@ -58,10 +61,21 @@ class FeaturePipeline:
         logger.info("Calculating Bollinger Band Features...")
         df = PriceFeatures.calculate_bollinger_bands(df, period=20, std_mult=2.0)
 
+        # ── 5.5 Cross Asset (V2) ───────────────────────────────────────────
+        logger.info("Calculating Cross-Asset Features...")
+        df = CrossAssetFeatures.calculate_cross_asset_features(df, lookback=15)
+
         # ── 6. Market Structure ────────────────────────────────────────────
         logger.info("Calculating Market Structure Features...")
         df = MarketStructureFeatures.calculate_intraday_structure(df)
         df = MarketStructureFeatures.calculate_daily_structure(df)
+
+        # ── 6.5 Professional Trading Features (V3) ─────────────────────────
+        logger.info("Calculating Professional Features (ADX, MACD, Keltner, OBV)...")
+        df = ProfessionalFeatures.calculate_adx(df, period=14)
+        df = ProfessionalFeatures.calculate_macd(df)
+        df = ProfessionalFeatures.calculate_obv(df)
+        df = ProfessionalFeatures.calculate_keltner_channels(df)
 
         # ── 7. Time Features ───────────────────────────────────────────────
         logger.info("Calculating Time Features...")

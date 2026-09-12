@@ -56,6 +56,7 @@ class PaperTrade(Base):
     option_type = Column(String(2), nullable=False) # CE or PE
     entry_time = Column(DateTime, nullable=False)
     entry_price = Column(Float, nullable=False)
+    quantity = Column(Integer, nullable=False, default=50)
     exit_time = Column(DateTime, nullable=True)
     exit_price = Column(Float, nullable=True)
     pnl = Column(Float, nullable=True)

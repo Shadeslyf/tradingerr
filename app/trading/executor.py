@@ -76,12 +76,13 @@ class PaperExecutor:
             return
             
         # Step 2: Risk Engine Filter
-        if not self.portfolio.risk_engine.evaluate_trade(ev_data):
-            logger.warning("Trade rejected by Risk Engine based on EV/Capital.")
+        is_approved, quantity = self.portfolio.risk_engine.evaluate_trade(ev_data)
+        if not is_approved or quantity <= 0:
+            logger.warning("Trade rejected by Risk Engine based on EV/Capital or Size.")
             return
             
         # Step 3: Execute
-        self.portfolio.execute_basket(basket, signal, timestamp)
+        self.portfolio.execute_basket(basket, signal, timestamp, quantity)
 
     def _get_leg(self, strike: float, option_type: str, action: str, prices: Dict[str, float]) -> Optional[Dict[str, Any]]:
         token = self.instrument_manager.get_option_token(self.underlying, strike, option_type)
