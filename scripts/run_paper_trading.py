@@ -24,6 +24,7 @@ class LiveSimulator:
         self.trades = []
         self.equity_curve = []
         self.equity_times = []
+        self.recent_signals = []
         
     def process_tick(self, timestamp, current_price, current_atr, conf, sig, adx_val=None, vol_ratio=1.0):
         LOT_SIZE = 25
@@ -32,6 +33,10 @@ class LiveSimulator:
         TARGET_PCT_BASE = 1.5
         STOP_LOSS_PCT = 0.5
         CONFIDENCE_MIN = 0.45
+        
+        signal_str = "HOLD" if sig == 1 else ("LONG" if sig == 0 else "SHORT")
+        acted_on = False
+        skip_reason = None
         
         # 1. Check Exit if we have an open position
         if self.position:
@@ -114,18 +119,23 @@ class LiveSimulator:
                 
         # 2. Check Entry if no open position
         if not self.position:
-            if sig == 1 or conf < CONFIDENCE_MIN:
-                pass # Range or low confidence
+            if sig == 1:
+                skip_reason = "HOLD Signal"
+            elif conf < CONFIDENCE_MIN:
+                skip_reason = "Low Confidence"
             else:
                 # Regime Filters (Time & VSA)
                 is_lunch = (timestamp.hour == 12)
                 is_low_volume = (vol_ratio < 1.0)
                 
-                if (is_lunch and conf < 0.95) or is_low_volume:
-                    pass
+                if (is_lunch and conf < 0.95):
+                    skip_reason = "Lunch Hour"
+                elif is_low_volume:
+                    skip_reason = "Low Volume"
                 elif self.is_v4 and adx_val is not None and adx_val < 20.0:
-                    pass
+                    skip_reason = "Low ADX (Chop)"
                 else:
+                    acted_on = True
                     direction = "LONG" if sig == 0 else "SHORT"
                     
                     # Dynamic Asymmetrical Targets & Expiry
@@ -166,7 +176,18 @@ class LiveSimulator:
                         "confidence": float(conf),
                         "bars_held": 0
                     }
-                    logger.info(f"[{self.name}] Entered {direction} @ {current_price} (Conf: {conf*100:.1f}%)")
+                    logger.info(f"[{self.name}] Entered {direction} @ {current_price:.2f} (Conf: {conf:.2f})")
+
+        # Log signal to feed
+        self.recent_signals.append({
+            "timestamp": str(timestamp),
+            "signal": signal_str,
+            "confidence": float(conf),
+            "acted_on": acted_on,
+            "skip_reason": skip_reason if not acted_on else None
+        })
+        if len(self.recent_signals) > 100:
+            self.recent_signals.pop(0)
 
         self.equity_curve.append(self.capital)
         self.equity_times.append(str(timestamp))
@@ -354,7 +375,8 @@ def save_state(df_raw, simulators, option_chain_data=None):
             "equity_curve": sim.equity_curve,
             "equity_times": sim.equity_times,
             "net_pnl": sim.capital - 100000.0,
-            "open_position": sim.position
+            "open_position": sim.position,
+            "recent_signals": sim.recent_signals
         }
         
     with open("data/live_paper_trading.json", "w") as f:
