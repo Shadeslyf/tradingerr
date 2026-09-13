@@ -114,7 +114,7 @@ export default function TrainPage() {
   };
 
   return (
-    <div className="flex flex-col h-full space-y-6 max-w-5xl mx-auto">
+    <div className="flex flex-col h-full space-y-6 max-w-[1400px] w-full mx-auto">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-medium tracking-tight text-[var(--color-primary)] flex items-center">
           <FlaskConical className="w-5 h-5 mr-2 text-purple-400" />
