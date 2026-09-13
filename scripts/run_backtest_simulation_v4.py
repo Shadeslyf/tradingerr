@@ -34,13 +34,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.features.feature_pipeline import FeaturePipeline
 from app.ml.labeling import RegimeLabeler
+from app.risk.position_sizing import PositionSizer
 
 # ─────────────────────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────────────────────
-MODEL_PATH       = "models/walk_forward/best_model.joblib"
-RAW_2Y_CSV       = "data/Nifty50_2Years_1Min.csv"
+MODEL_PATH       = "models/walk_forward_v4/best_model.joblib"
+RAW_2Y_CSV       = "data/Nifty50_CrossAsset_Merged.csv"
 REAL_30D_CSV     = "data/real_nifty_30d.csv"
+OUT_JSON_MAIN    = "data/backtest_results/backtest_jan_apr_2026_v4.json"
+OUT_JSON_LIVE    = "data/backtest_results/backtest_30d_live_v4.json"
 RESULTS_DIR      = "data/backtest_results"
 
 INITIAL_CAPITAL  = 100_000.0   # ₹1,00,000
@@ -118,8 +121,9 @@ def run_backtest(df_feat: pd.DataFrame, model, initial_capital: float, label: st
     while i < n - HOLD_BARS:
         sig  = signals[i]
         conf = confidence[i]
+        adx_val = df_feat.iloc[i]["adx_14"] if "adx_14" in df_feat.columns else 25.0
 
-        if sig == 1 or conf < CONFIDENCE_MIN:   # RANGE or low confidence → skip
+        if sig == 1 or conf < CONFIDENCE_MIN or adx_val < 20.0:   # RANGE, low confidence or low ADX → skip
             i += 1
             equity.append(capital)
             eq_times.append(str(timestamps[i]))
@@ -127,32 +131,69 @@ def run_backtest(df_feat: pd.DataFrame, model, initial_capital: float, label: st
 
         entry_price = closes[i]
         direction   = "LONG" if sig == 0 else "SHORT"
-        sl_price    = entry_price * (1 - STOP_LOSS_PCT/100) if direction=="LONG" else entry_price * (1 + STOP_LOSS_PCT/100)
         tp_price    = entry_price * (1 + TARGET_PCT/100)    if direction=="LONG" else entry_price * (1 - TARGET_PCT/100)
 
         exit_price  = closes[i + HOLD_BARS]
         exit_reason = "HOLD_EXPIRY"
         exit_bar    = i + HOLD_BARS
 
+        # V4 ATR Trailing Stop Logic (Chandelier Exit) + Breakeven Stops
+        ATR_MULT = 2.5
+        entry_atr = df_feat.iloc[i]["atr_14"] if "atr_14" in df_feat.columns else (entry_price * 0.002)
+        highest_high = entry_price
+        lowest_low = entry_price
+        breakeven_activated = False
+
+        # Calculate dynamic position size based on Fixed Fractional (1% risk)
+        ev_data = {
+            'max_loss': (entry_atr * ATR_MULT) * LOT_SIZE,
+            'max_profit': entry_price * (TARGET_PCT/100) * LOT_SIZE,
+            'prob_win': float(conf),
+            'prob_loss': 1 - float(conf)
+        }
+        quantity = PositionSizer.calculate_fixed_fractional(capital, ev_data, risk_pct=1.0, lot_size=LOT_SIZE)
+        if quantity == 0:
+            quantity = LOT_SIZE # Default to 1 lot
+
         # Check stop / target hit within hold window
         for j in range(i+1, min(i+HOLD_BARS+1, n)):
             bar_low  = df_feat.iloc[j]["low"]  if "low"  in df_feat.columns else closes[j]
             bar_high = df_feat.iloc[j]["high"] if "high" in df_feat.columns else closes[j]
+            bar_atr  = df_feat.iloc[j]["atr_14"] if "atr_14" in df_feat.columns else entry_atr
+            
             if direction == "LONG":
-                if bar_low <= sl_price:
-                    exit_price = sl_price; exit_reason = "STOP_LOSS"; exit_bar = j; break
+                highest_high = max(highest_high, bar_high)
+                trailing_sl = highest_high - (ATR_MULT * bar_atr)
+                
+                if not breakeven_activated and (highest_high - entry_price) >= (0.5 * entry_atr):
+                    breakeven_activated = True
+                    
+                if breakeven_activated:
+                    trailing_sl = max(trailing_sl, entry_price)
+                    
+                if bar_low <= trailing_sl:
+                    exit_price = trailing_sl; exit_reason = "TRAILING_STOP"; exit_bar = j; break
                 if bar_high >= tp_price:
                     exit_price = tp_price; exit_reason = "TARGET_HIT"; exit_bar = j; break
             else:
-                if bar_high >= sl_price:
-                    exit_price = sl_price; exit_reason = "STOP_LOSS"; exit_bar = j; break
+                lowest_low = min(lowest_low, bar_low)
+                trailing_sl = lowest_low + (ATR_MULT * bar_atr)
+                
+                if not breakeven_activated and (entry_price - lowest_low) >= (0.5 * entry_atr):
+                    breakeven_activated = True
+                    
+                if breakeven_activated:
+                    trailing_sl = min(trailing_sl, entry_price)
+                    
+                if bar_high >= trailing_sl:
+                    exit_price = trailing_sl; exit_reason = "TRAILING_STOP"; exit_bar = j; break
                 if bar_low <= tp_price:
                     exit_price = tp_price; exit_reason = "TARGET_HIT"; exit_bar = j; break
 
         if direction == "LONG":
-            pnl = (exit_price - entry_price) * LOT_SIZE
+            pnl = (exit_price - entry_price) * quantity
         else:
-            pnl = (entry_price - exit_price) * LOT_SIZE
+            pnl = (entry_price - exit_price) * quantity
 
         capital += pnl
         regime   = REGIME_MAP[sig]
@@ -165,8 +206,9 @@ def run_backtest(df_feat: pd.DataFrame, model, initial_capital: float, label: st
             "confidence":   round(float(conf), 4),
             "entry_price":  round(float(entry_price), 2),
             "exit_price":   round(float(exit_price), 2),
+            "quantity":     quantity,
             "pnl_rs":       round(float(pnl), 2),
-            "pnl_pct":      round(float(pnl / (entry_price * LOT_SIZE)) * 100, 4),
+            "pnl_pct":      round(float(pnl / (entry_price * quantity)) * 100, 4),
             "exit_reason":  exit_reason,
             "capital_after": round(float(capital), 2),
         })
@@ -254,7 +296,7 @@ def main():
         logger.error("Feature build returned empty for Apr 2025 - Apr 2026!")
     else:
         result_1 = run_backtest(feats_1, model, INITIAL_CAPITAL, "1-Year Backtest (Apr '25 - Apr '26)")
-        out_1 = os.path.join(RESULTS_DIR, "backtest_jan_apr_2026.json")
+        out_1 = OUT_JSON_MAIN
         with open(out_1, "w") as f:
             json.dump(result_1, f, indent=2)
         logger.info(f"Result saved: {out_1}")
@@ -275,7 +317,7 @@ def main():
         # For 30-day forward test, start capital from where Jan-Apr ended (or 1L fresh)
         start_cap_2 = result_1["final_capital"] if feats_1 is not None and not feats_1.empty else INITIAL_CAPITAL
         result_2 = run_backtest(feats_2, model, start_cap_2, "Live 30-Day (Aug-Sep 2026)")
-        out_2 = os.path.join(RESULTS_DIR, "backtest_30d_live.json")
+        out_2 = OUT_JSON_LIVE
         with open(out_2, "w") as f:
             json.dump(result_2, f, indent=2)
         logger.info(f"Result saved: {out_2}")
@@ -286,14 +328,15 @@ def main():
 
     # ── Combined summary ─────────────────────────────────────
     combined = {
-        "backtest_jan_apr_2026": result_1 if not feats_1.empty else {},
-        "backtest_30d_live":     result_2 if not feats_2.empty else {},
+        "backtest_jan_apr_2026_v4": result_1 if not feats_1.empty else {},
+        "backtest_30d_live_v4":     result_2 if not feats_2.empty else {},
         "generated_at":          datetime.now().isoformat(),
     }
-    combined_path = os.path.join(RESULTS_DIR, "combined_results.json")
+    
+    combined_path = os.path.join(RESULTS_DIR, "combined_results_v4.json")
     with open(combined_path, "w") as f:
         json.dump(combined, f, indent=2)
-    logger.info(f"\nCombined results saved: {combined_path}")
+    logger.info(f"V4 combined results saved: {combined_path}")
 
 
 if __name__ == "__main__":

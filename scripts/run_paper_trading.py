@@ -1,140 +1,365 @@
 import sys
 import os
 import time
-import threading
+import json
 import pandas as pd
 import numpy as np
-import xgboost as xgb
+import joblib
 from datetime import datetime, timedelta
 from loguru import logger
-import glob
-import joblib
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.api.auth import AngelOneAuth
-from app.market.instruments import InstrumentManager
-from app.database.models import init_db
-from app.database.repositories import MarketDataRepository, SessionLocal
-from app.trading.portfolio import PaperPortfolioManager
-from app.trading.executor import PaperExecutor
+from app.broker.angel_one import AngelOneBroker
 from app.features.feature_pipeline import FeaturePipeline
-from app.broker.paper import PaperBroker
-from app.risk.portfolio import RiskEngine
+from app.market.instruments import InstrumentManager
 
-# We simulate the Live feed by fetching the last 100 minutes of data from DB,
-# running features, and applying the model.
-# A true live websocket feed would populate the database asynchronously.
-
-def load_latest_model():
-    model_files = glob.glob("data/models/xgboost_regime_*.pkl")
-    if not model_files:
-        raise FileNotFoundError("No XGBoost model found in data/models/")
-    latest = max(model_files, key=os.path.getctime)
-    logger.info(f"Loading Model: {latest}")
-    return joblib.load(latest)
-
-def live_paper_trading_loop():
-    logger.info("Initializing Live Paper Trading Engine...")
-    
-    # 1. Initialize DB & Core components
-    init_db()
-    session = SessionLocal()
-    repo = MarketDataRepository(session)
-    
-    instrument_manager = InstrumentManager()
-    if not os.path.exists("data/instruments.json"):
-        # We need instruments for strike calculation
-        auth = AngelOneAuth()
-        instrument_manager.fetch_and_save_instruments()
-    else:
-        instrument_manager.load_instruments()
+class LiveSimulator:
+    def __init__(self, name: str, initial_capital: float = 100000.0, is_v3: bool = False, is_v4: bool = False):
+        self.name = name
+        self.capital = initial_capital
+        self.is_v3 = is_v3
+        self.is_v4 = is_v4
+        self.position = None
+        self.trades = []
+        self.equity_curve = []
+        self.equity_times = []
         
-    broker = PaperBroker()
-    risk_engine = RiskEngine(starting_capital=300000.0, max_risk_per_trade_pct=1.0)
-    
-    portfolio = PaperPortfolioManager(broker, risk_engine, stop_loss_pct=15.0, take_profit_pct=30.0)
-    executor = PaperExecutor(portfolio, instrument_manager)
-    
-    # 2. Load Model
-    model = load_latest_model()
-    
-    # Required features mapping from model training
-    # We assume the model expects the features outputted by FeaturePipeline
-    
-    logger.info("Engine Ready. Starting 1-minute execution loop...")
-    
-    try:
-        while True:
-            current_time = datetime.now()
+    def process_tick(self, timestamp, current_price, current_atr, conf, sig, adx_val=None, vol_ratio=1.0):
+        LOT_SIZE = 25
+        ATR_MULT_INITIAL = 3.0
+        ATR_MULT_TRAIL = 2.0
+        TARGET_PCT_BASE = 1.5
+        STOP_LOSS_PCT = 0.5
+        CONFIDENCE_MIN = 0.45
+        
+        # 1. Check Exit if we have an open position
+        if self.position:
+            p = self.position
+            p["bars_held"] += 1
+            exit_reason = None
             
-            # End of day square off
-            if current_time.hour == 15 and current_time.minute >= 15:
-                logger.info("End of Day. Squaring off all positions.")
-                # We pass an empty dict for prices; portfolio uses entry_price as fallback
-                portfolio.close_all_eod(current_time, {})
-                break
+            # V3/V4 Trailing Stop (Chandelier Exit)
+            if self.is_v3 or self.is_v4:
+                if p["direction"] == "LONG":
+                    p["highest_high"] = max(p["highest_high"], current_price)
+                    if p["highest_high"] == p["entry_price"]:
+                        p["trailing_sl"] = p["highest_high"] - (ATR_MULT_INITIAL * current_atr)
+                    else:
+                        p["trailing_sl"] = max(p["trailing_sl"], p["highest_high"] - (ATR_MULT_TRAIL * current_atr))
+                else:
+                    p["lowest_low"] = min(p["lowest_low"], current_price)
+                    if p["lowest_low"] == p["entry_price"]:
+                        p["trailing_sl"] = p["lowest_low"] + (ATR_MULT_INITIAL * current_atr)
+                    else:
+                        p["trailing_sl"] = min(p["trailing_sl"], p["lowest_low"] + (ATR_MULT_TRAIL * current_atr))
+            
+            # V4 Breakeven Stop
+            if self.is_v4:
+                if p["direction"] == "LONG" and (p["highest_high"] - p["entry_price"]) >= (0.5 * p["entry_atr"]):
+                    p["trailing_sl"] = max(p["trailing_sl"], p["entry_price"])
+                elif p["direction"] == "SHORT" and (p["entry_price"] - p["lowest_low"]) >= (0.5 * p["entry_atr"]):
+                    p["trailing_sl"] = min(p["trailing_sl"], p["entry_price"])
+                    
+            # Check Stops and Targets
+            if p["direction"] == "LONG":
+                if current_price <= p["trailing_sl"]:
+                    exit_reason = "TRAILING_STOP" if (self.is_v3 or self.is_v4) else "STOP_LOSS"
+                elif current_price >= p["target"]:
+                    exit_reason = "TARGET_HIT"
+            else:
+                if current_price >= p["trailing_sl"]:
+                    exit_reason = "TRAILING_STOP" if (self.is_v3 or self.is_v4) else "STOP_LOSS"
+                elif current_price <= p["target"]:
+                    exit_reason = "TARGET_HIT"
+                    
+            if p["bars_held"] >= p["max_hold_bars"] and not exit_reason:
+                exit_reason = "TIME_EXIT"
                 
-            # Simulate pulling the last 150 minutes of OHLCV to calculate features
-            # In a real setup, a separate thread pulls Websocket ticks and writes to OHLCV table
-            # Here we just fetch what's available
-            
-            # Fetch Spot OHLCV
-            query = session.query(repo.session.get_bind()).text("SELECT * FROM ohlcv ORDER BY timestamp ASC LIMIT 150")
-            df = pd.read_sql(query, session.bind)
-            
-            if len(df) < 60:
-                logger.warning(f"Not enough data to calculate features. Have {len(df)} rows. Waiting...")
-                time.sleep(60)
-                continue
+            if exit_reason:
+                # Option Greeks Simulation
+                OPTION_DELTA = 0.50
+                THETA_DECAY_PER_MIN = 0.20 # ₹0.20 per minute per lot
+                AVG_PREMIUM = 150.0
+                SLIPPAGE_PCT = 0.05
+                TRANSACTION_COST = 60.0
                 
-            # Process Features
-            features_df = FeaturePipeline.generate_features(df, options_ohlcv=None)
-            
-            if features_df.empty:
-                time.sleep(60)
-                continue
+                if p["direction"] == "LONG":
+                    spot_pnl = (current_price - p["entry_price"]) * p["quantity"]
+                else:
+                    spot_pnl = (p["entry_price"] - current_price) * p["quantity"]
+                    
+                gross_option_pnl = (spot_pnl * OPTION_DELTA) - (THETA_DECAY_PER_MIN * p["bars_held"] * (p["quantity"] / LOT_SIZE))
                 
-            # Get latest features
-            latest_features = features_df.iloc[[-1]].copy()
-            
-            # Keep only columns used in training
-            drop_cols = ['label', 'timestamp', 'symbol', 'token', 'exchange']
-            X = latest_features.drop(columns=[c for c in drop_cols if c in latest_features.columns])
-            
-            # 3. Predict Market Regime
-            probs = model.predict_proba(X)[0]
-            pred_class = int(np.argmax(probs)) + 1 # Add 1 because we trained on 0-6 for 1-7
-            confidence = probs[pred_class - 1]
-            
-            spot_ltp = df['close'].iloc[-1]
-            logger.info(f"Time: {current_time.strftime('%H:%M')} | Spot: {spot_ltp} | Pred: {pred_class} | Conf: {confidence:.2f}")
-            
-            # 4. Execute Logic
-            # E.g. AI_MIN_CONFIDENCE = 0.45 (since it's a 3 class problem, random is 0.33)
-            if confidence > 0.45:
-                # We need the latest options ticks. We simulate this for now.
-                # In production, this comes from the WebSocket buffer.
-                simulated_ask_price = 150.0 # Dummy price
-                # Map option token to simulated price
-                latest_ticks = {t: simulated_ask_price for t in instrument_manager.tokens.keys()}
+                option_entry_value = AVG_PREMIUM * p["quantity"]
+                option_exit_value = AVG_PREMIUM * p["quantity"]
+                slippage_cost = (option_entry_value + option_exit_value) * (SLIPPAGE_PCT / 100)
                 
-                executor.process_signal(pred_class, spot_ltp, current_time, latest_ticks)
-                
-            # 5. Portfolio tick check (Stop loss / Take profit)
-            # In production, this is called on every websocket tick.
-            # We simulate a tick event here for the currently held position.
-            if portfolio.open_trades:
-                # In basket mode, we just need to pass the prices of the legs
-                for trade in portfolio.open_trades:
-                    sim_ltp = latest_ticks.get(trade.token, trade.entry_price)
-                    portfolio.on_tick(trade.token, sim_ltp, current_time)
+                pnl = gross_option_pnl - slippage_cost - TRANSACTION_COST
 
-            # Sleep until next minute
+                self.capital += pnl
+                self.trades.append({
+                    "entry_time": p["entry_time"],
+                    "exit_time": str(timestamp),
+                    "direction": p["direction"],
+                    "entry_price": p["entry_price"],
+                    "exit_price": current_price,
+                    "quantity": p["quantity"],
+                    "pnl_rs": round(pnl, 2),
+                    "exit_reason": exit_reason,
+                    "confidence": p["confidence"]
+                })
+                logger.info(f"[{self.name}] Closed {p['direction']} | P&L: ₹{pnl:.2f} | Reason: {exit_reason}")
+                self.position = None
+                
+        # 2. Check Entry if no open position
+        if not self.position:
+            if sig == 1 or conf < CONFIDENCE_MIN:
+                pass # Range or low confidence
+            else:
+                # Regime Filters (Time & VSA)
+                is_lunch = (timestamp.hour == 12)
+                is_low_volume = (vol_ratio < 1.0)
+                
+                if (is_lunch and conf < 0.95) or is_low_volume:
+                    pass
+                elif self.is_v4 and adx_val is not None and adx_val < 20.0:
+                    pass
+                else:
+                    direction = "LONG" if sig == 0 else "SHORT"
+                    
+                    # Dynamic Asymmetrical Targets & Expiry
+                    if direction == "LONG":
+                        current_target_pct = 1.2
+                        max_hold_bars = 90
+                    else:
+                        current_target_pct = 1.8
+                        max_hold_bars = 60
+                        
+                    if (self.is_v3 or self.is_v4) and current_atr is not None:
+                        if current_atr < 4.0:
+                            current_target_pct *= 0.5
+                            max_hold_bars = int(max_hold_bars * 1.5)
+                        elif current_atr > 10.0:
+                            current_target_pct *= 1.5
+                    
+                    if self.is_v3 or self.is_v4:
+                        sl = current_price - (current_atr * ATR_MULT_INITIAL) if direction == "LONG" else current_price + (current_atr * ATR_MULT_INITIAL)
+                        tp = current_price + (current_price * (current_target_pct/100)) if direction == "LONG" else current_price - (current_price * (current_target_pct/100))
+                    else:
+                        sl = current_price * (1 - STOP_LOSS_PCT/100) if direction == "LONG" else current_price * (1 + STOP_LOSS_PCT/100)
+                        tp = current_price * (1 + current_target_pct/100) if direction == "LONG" else current_price * (1 - current_target_pct/100)
+                        
+                    quantity = LOT_SIZE
+                    
+                    self.position = {
+                        "entry_time": str(timestamp),
+                        "direction": direction,
+                        "entry_price": current_price,
+                        "highest_high": current_price,
+                        "lowest_low": current_price,
+                        "quantity": quantity,
+                        "entry_atr": current_atr,
+                        "trailing_sl": sl,
+                        "target": tp,
+                        "max_hold_bars": max_hold_bars,
+                        "confidence": float(conf),
+                        "bars_held": 0
+                    }
+                    logger.info(f"[{self.name}] Entered {direction} @ {current_price} (Conf: {conf*100:.1f}%)")
+
+        self.equity_curve.append(self.capital)
+        self.equity_times.append(str(timestamp))
+
+def main():
+    logger.info("Starting Live Paper Trading Engine...")
+    
+    broker = AngelOneBroker()
+    if not broker.login():
+        logger.error("Failed to login to Angel One. Exiting.")
+        return
+        
+    logger.info("Initializing Instrument Manager...")
+    raw = broker.get_instrument_master()
+    im = InstrumentManager(raw)
+        
+    models = {
+        "V1": {"path": "models/walk_forward/best_model.joblib", "is_v3": False, "is_v4": False},
+        "V2": {"path": "models/walk_forward_v2/best_model.joblib", "is_v3": False, "is_v4": False},
+        "V3": {"path": "models/walk_forward_v3/best_model.joblib", "is_v3": True, "is_v4": False},
+        "V4": {"path": "models/walk_forward_v4/best_model.joblib", "is_v3": False, "is_v4": True},
+    }
+    
+    loaded_models = {}
+    loaded_calibrators = {}
+    simulators = {}
+    
+    for name, m_info in models.items():
+        if os.path.exists(m_info["path"]):
+            loaded_models[name] = joblib.load(m_info["path"])
+            simulators[name] = LiveSimulator(name, initial_capital=100000.0, is_v3=m_info["is_v3"], is_v4=m_info["is_v4"])
+            logger.info(f"Loaded {name} Model")
+            
+            # Load calibrator if exists
+            cal_path = os.path.join(os.path.dirname(m_info["path"]), "calibrator.joblib")
+            if os.path.exists(cal_path):
+                loaded_calibrators[name] = joblib.load(cal_path)
+                logger.info(f"  └─ Loaded calibrator for {name}")
+            
+    if not loaded_models:
+        logger.error("No models found!")
+        return
+
+    last_processed_timestamp = None
+
+    while True:
+        try:
+            now = datetime.now()
+            todate = now.strftime("%Y-%m-%d %H:%M")
+            fromdate = (now - timedelta(minutes=150)).strftime("%Y-%m-%d %H:%M")
+            
+            logger.info(f"Fetching Live Data from {fromdate} to {todate}...")
+            raw_data = broker.get_candle_data(exchange="NSE", symboltoken="99926000", interval="ONE_MINUTE", fromdate=fromdate, todate=todate)
+            
+            if not raw_data:
+                logger.warning("No data returned for 99926000. Trying token 26000...")
+                raw_data = broker.get_candle_data(exchange="NSE", symboltoken="26000", interval="ONE_MINUTE", fromdate=fromdate, todate=todate)
+                
+            if not raw_data:
+                logger.warning("Still no data. (Market might be closed). Fetching Friday's data for simulation...")
+                # Fallback to Friday for testing on weekends
+                todate_fallback = "2026-09-11 15:30"
+                fromdate_fallback = "2026-09-11 13:00"
+                raw_data = broker.get_candle_data(exchange="NSE", symboltoken="99926000", interval="ONE_MINUTE", fromdate=fromdate_fallback, todate=todate_fallback)
+                if not raw_data:
+                    raw_data = broker.get_candle_data(exchange="NSE", symboltoken="26000", interval="ONE_MINUTE", fromdate=fromdate_fallback, todate=todate_fallback)
+                    
+                if not raw_data:
+                    logger.error("Failed to fetch fallback data. Retrying in 60 seconds.")
+                    time.sleep(60)
+                    continue
+                
+            df = pd.DataFrame(raw_data, columns=["timestamp", "open", "high", "low", "close", "volume"])
+            df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
+            
+            df_feat = FeaturePipeline.generate_features(df.copy())
+            if df_feat.empty:
+                logger.warning("Feature pipeline returned empty. Waiting...")
+                time.sleep(60)
+                continue
+                
+            df_raw_aligned = df.iloc[-len(df_feat):].reset_index(drop=True)
+            df_feat = df_feat.reset_index(drop=True)
+            
+            latest_feat = df_feat.iloc[-1:]
+            latest_raw = df_raw_aligned.iloc[-1]
+            current_timestamp = latest_raw["timestamp"]
+            current_price = latest_raw["close"]
+            
+            if last_processed_timestamp == current_timestamp:
+                logger.info(f"Candle {current_timestamp} already processed. Waiting...")
+                time.sleep(60)
+                continue
+                
+            logger.info(f"Processing Live Tick: {current_timestamp} @ ₹{current_price}")
+            
+            for name, model in loaded_models.items():
+                expected_cols = model.feature_names_in_
+                X = latest_feat.reindex(columns=expected_cols, fill_value=0.0)
+                
+                probs = model.predict_proba(X)
+                pred = np.argmax(probs, axis=1)[0]
+                conf = np.max(probs, axis=1)[0]
+                
+                # Apply probability calibration
+                if name in loaded_calibrators:
+                    conf = float(loaded_calibrators[name].predict([conf])[0])
+                
+                sim = simulators[name]
+                adx_val = latest_feat["adx_14"].values[0] if "adx_14" in latest_feat.columns else 25.0
+                current_atr = latest_feat["atr_14"].values[0] if "atr_14" in latest_feat.columns else 20.0
+                vol_ratio = latest_feat["vol_ratio"].values[0] if "vol_ratio" in latest_feat.columns else 1.0
+                
+                sim.process_tick(current_timestamp, current_price, current_atr, conf, pred, adx_val, vol_ratio)
+                
+            # --- Option Chain Logic ---
+            option_chain_data = []
+            try:
+                atm = round(current_price / 50) * 50
+                strikes = [atm + (i * 50) for i in range(-5, 6)]
+                opts = im.get_current_nifty_options()
+                opts['expiry_dt'] = pd.to_datetime(opts['expiry'], format='%d%b%Y', errors='coerce')
+                opts = opts[opts['expiry_dt'] >= now]
+                if not opts.empty:
+                    nearest = opts.iloc[0]['expiry_dt']
+                    opts = opts[(opts['expiry_dt'] == nearest) & (opts['strike'].isin(strikes))]
+                    tokens = opts['token'].tolist()
+                    md = broker.smart_api.getMarketData("FULL", {"NFO": tokens})
+                    if md and md.get("status"):
+                        fetched = md.get("data", {}).get("fetched", [])
+                        # Map token to ltp and oi
+                        ltp_map = {item["symbolToken"]: item["ltp"] for item in fetched}
+                        oi_map = {item["symbolToken"]: item.get("opnInterest", 0) for item in fetched}
+                        
+                        for st in strikes:
+                            st_opts = opts[opts['strike'] == st]
+                            ce = st_opts[st_opts['symbol'].str.endswith('CE')]
+                            pe = st_opts[st_opts['symbol'].str.endswith('PE')]
+                            
+                            ce_token = ce.iloc[0]['token'] if not ce.empty else None
+                            pe_token = pe.iloc[0]['token'] if not pe.empty else None
+                            
+                            ce_ltp = ltp_map.get(ce_token)
+                            pe_ltp = ltp_map.get(pe_token)
+                            ce_oi = oi_map.get(ce_token, 0)
+                            pe_oi = oi_map.get(pe_token, 0)
+                            
+                            option_chain_data.append({
+                                "CE_OI": ce_oi,
+                                "CE_LTP": ce_ltp,
+                                "Strike": st,
+                                "PE_LTP": pe_ltp,
+                                "PE_OI": pe_oi
+                            })
+            except Exception as e:
+                logger.error(f"Failed to fetch Option Chain: {e}")
+                
+            last_processed_timestamp = current_timestamp
+            
+            save_state(df_raw_aligned, simulators, option_chain_data)
+            
             time.sleep(60)
             
-    except KeyboardInterrupt:
-        logger.info("Paper Trading Engine stopped manually.")
+        except Exception as e:
+            logger.error(f"Loop Exception: {e}")
+            time.sleep(60)
+            
+def save_state(df_raw, simulators, option_chain_data=None):
+    out = {
+        "market_data": {
+            "timestamp": df_raw["timestamp"].astype(str).tolist(),
+            "open": df_raw["open"].tolist(),
+            "high": df_raw["high"].tolist(),
+            "low": df_raw["low"].tolist(),
+            "close": df_raw["close"].tolist()
+        },
+        "models": {},
+        "option_chain": option_chain_data or []
+    }
+    
+    for name, sim in simulators.items():
+        out["models"][name] = {
+            "capital": sim.capital,
+            "trades": sim.trades,
+            "equity_curve": sim.equity_curve,
+            "equity_times": sim.equity_times,
+            "net_pnl": sim.capital - 100000.0,
+            "open_position": sim.position
+        }
+        
+    with open("data/live_paper_trading.json", "w") as f:
+        json.dump(out, f)
+    logger.info("Saved Live State to data/live_paper_trading.json")
 
 if __name__ == "__main__":
-    live_paper_trading_loop()
+    main()

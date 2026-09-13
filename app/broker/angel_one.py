@@ -60,6 +60,35 @@ class AngelOneBroker(BrokerClient):
             logger.error(f"Failed to fetch instrument master: {e}")
             return []
 
+    def get_candle_data(self, exchange: str, symboltoken: str, interval: str, fromdate: str, todate: str) -> List[Dict[str, Any]]:
+        """
+        Fetch historical candle data.
+        interval: ONE_MINUTE, THREE_MINUTE, FIVE_MINUTE, etc.
+        fromdate/todate format: 'YYYY-MM-DD HH:MM'
+        """
+        if not self.auth_token:
+            logger.error("Not logged in. Call login() first.")
+            return []
+            
+        historicParam = {
+            "exchange": exchange,
+            "symboltoken": symboltoken,
+            "interval": interval,
+            "fromdate": fromdate,
+            "todate": todate
+        }
+        
+        try:
+            response = self.smart_api.getCandleData(historicParam)
+            if response and response.get('status'):
+                return response.get('data', [])
+            else:
+                logger.error(f"Failed to fetch candle data: {response}")
+                return []
+        except Exception as e:
+            logger.error(f"Exception fetching candle data: {e}")
+            return []
+
     # Implement abstract methods
     def get_quote(self, symbol: str, token: str) -> Dict[str, Any]:
         return {}

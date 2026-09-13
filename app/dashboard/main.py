@@ -8,6 +8,7 @@ Displays:
 
 import os
 import sys
+import time
 import json
 import numpy as np
 import pandas as pd
@@ -183,12 +184,21 @@ def load_wf_summary():
         return pd.DataFrame()
     return pd.read_csv(os.path.join(WF_SUMMARY, files[-1]))
 
+@st.cache_data(ttl=60)
+def load_bt_results(path1, path2):
+    return load_backtest(os.path.basename(path1)), load_backtest(os.path.basename(path2))
+
 bt1  = load_backtest("backtest_jan_apr_2026.json")
-bt1_v2 = load_backtest("backtest_jan_apr_2026_v2.json")
-bt1_v3 = load_backtest("backtest_jan_apr_2026_v3.json")
 bt2  = load_backtest("backtest_30d_live.json")
-bt2_v2 = load_backtest("backtest_30d_live_v2.json")
-bt2_v3 = load_backtest("backtest_30d_live_v3.json")
+bt1_v2, bt2_v2 = load_bt_results("data/backtest_results/backtest_jan_apr_2026_v2.json", "data/backtest_results/backtest_30d_live_v2.json")
+bt1_v3, bt2_v3 = load_bt_results("data/backtest_results/backtest_jan_apr_2026_v3.json", "data/backtest_results/backtest_30d_live_v3.json")
+bt1_v4, bt2_v4 = load_bt_results("data/backtest_results/backtest_jan_apr_2026_v4.json", "data/backtest_results/backtest_30d_live_v4.json")
+
+bt1_hm = load_backtest("backtest_jan_apr_2026_v1_hm.json")
+bt2_hm = load_backtest("backtest_jan_apr_2026_v2_hm.json")
+bt3_hm = load_backtest("backtest_jan_apr_2026_v3_hm.json")
+bt4_hm = load_backtest("backtest_jan_apr_2026_v4_hm.json")
+
 wf_df = load_wf_summary()
 
 # ─────────────────────────────────────────────────────────────
@@ -219,41 +229,74 @@ st.markdown(f"""
 def metric_html(label, value, cls="blue"):
     return f'<div class="metric-card"><div class="metric-label">{label}</div><div class="metric-value {cls}">{value}</div></div>'
 
-st.markdown('<div class="section-header" id="performance-overview">🎯 Performance Overview (V1 vs V2 vs V3)</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-header" id="performance-overview">🎯 Performance Overview (V1 vs V2 vs V3 vs V4)</div>', unsafe_allow_html=True)
+
+mode_sel = st.radio("Simulation Mode", ["Standard (1% Risk)", "House Money (20% Compounding)"], horizontal=True)
 
 ic = bt1["initial_capital"]   if bt1 else 100000
 
-# V1 data
-pnl1_v1 = bt1["net_pnl"]         if bt1 else 0
-pnl2_v1 = bt2["net_pnl"]         if bt2 else 0
-trades1_v1 = bt1["total_trades"] if bt1 else 0
-wr1_v1 = bt1["win_rate_pct"]     if bt1 else 0
+if mode_sel == "Standard (1% Risk)":
+    # V1 data
+    pnl1_v1 = bt1["net_pnl"]         if bt1 else 0
+    pnl2_v1 = bt2["net_pnl"]         if bt2 else 0
+    trades1_v1 = bt1["total_trades"] if bt1 else 0
+    wr1_v1 = bt1["win_rate_pct"]     if bt1 else 0
 
-# V2 data
-pnl1_v2 = bt1_v2["net_pnl"]      if bt1_v2 else 0
-pnl2_v2 = bt2_v2["net_pnl"]      if bt2_v2 else 0
-trades1_v2 = bt1_v2["total_trades"] if bt1_v2 else 0
-wr1_v2 = bt1_v2["win_rate_pct"]     if bt1_v2 else 0
+    # V2 data
+    pnl1_v2 = bt1_v2["net_pnl"]      if bt1_v2 else 0
+    pnl2_v2 = bt2_v2["net_pnl"]      if bt2_v2 else 0
+    trades1_v2 = bt1_v2["total_trades"] if bt1_v2 else 0
+    wr1_v2 = bt1_v2["win_rate_pct"]     if bt1_v2 else 0
 
-# V3 data
-pnl1_v3 = bt1_v3["net_pnl"]      if bt1_v3 else 0
-pnl2_v3 = bt2_v3["net_pnl"]      if bt2_v3 else 0
-trades1_v3 = bt1_v3["total_trades"] if bt1_v3 else 0
-wr1_v3 = bt1_v3["win_rate_pct"]     if bt1_v3 else 0
+    # V3 data
+    pnl1_v3 = bt1_v3["net_pnl"]      if bt1_v3 else 0
+    pnl2_v3 = bt2_v3["net_pnl"]      if bt2_v3 else 0
+    trades1_v3 = bt1_v3["total_trades"] if bt1_v3 else 0
+    wr1_v3 = bt1_v3["win_rate_pct"]     if bt1_v3 else 0
 
-perf_data = [
-    {"Model": "V1 (Price Only)", "Jan-Apr P&L": pnl1_v1, "Aug-Sep Live P&L": pnl2_v1, "Jan-Apr Trades": trades1_v1, "Jan-Apr Win Rate": wr1_v1},
-    {"Model": "V2 (Cross-Asset)", "Jan-Apr P&L": pnl1_v2, "Aug-Sep Live P&L": pnl2_v2, "Jan-Apr Trades": trades1_v2, "Jan-Apr Win Rate": wr1_v2},
-    {"Model": "V3 (Professional)", "Jan-Apr P&L": pnl1_v3, "Aug-Sep Live P&L": pnl2_v3, "Jan-Apr Trades": trades1_v3, "Jan-Apr Win Rate": wr1_v3}
-]
+    # V4 data
+    pnl1_v4 = bt1_v4["net_pnl"]      if bt1_v4 else 0
+    pnl2_v4 = bt2_v4["net_pnl"]      if bt2_v4 else 0
+    trades1_v4 = bt1_v4["total_trades"] if bt1_v4 else 0
+    wr1_v4 = bt1_v4["win_rate_pct"]     if bt1_v4 else 0
 
-df_perf = pd.DataFrame(perf_data)
-df_perf["Jan-Apr P&L"] = df_perf["Jan-Apr P&L"].apply(lambda x: f"₹{x:+,.0f}")
-df_perf["Aug-Sep Live P&L"] = df_perf["Aug-Sep Live P&L"].apply(lambda x: f"₹{x:+,.0f}")
-df_perf["Jan-Apr Win Rate"] = df_perf["Jan-Apr Win Rate"].apply(lambda x: f"{x:.1f}%")
+    perf_data = [
+        {"Model": "V1 (Price Only)", "1-Year P&L": pnl1_v1, "Aug-Sep Live P&L": pnl2_v1, "1-Year Trades": trades1_v1, "1-Year Win Rate": wr1_v1},
+        {"Model": "V2 (Cross-Asset)", "1-Year P&L": pnl1_v2, "Aug-Sep Live P&L": pnl2_v2, "1-Year Trades": trades1_v2, "1-Year Win Rate": wr1_v2},
+        {"Model": "V3 (Professional)", "1-Year P&L": pnl1_v3, "Aug-Sep Live P&L": pnl2_v3, "1-Year Trades": trades1_v3, "1-Year Win Rate": wr1_v3},
+        {"Model": "V4 (Optimized)", "1-Year P&L": pnl1_v4, "Aug-Sep Live P&L": pnl2_v4, "1-Year Trades": trades1_v4, "1-Year Win Rate": wr1_v4}
+    ]
 
-st.markdown(f"**Initial Capital:** ₹{ic:,.0f}")
-st.dataframe(df_perf, use_container_width=True)
+    df_perf = pd.DataFrame(perf_data)
+    df_perf["1-Year P&L"] = df_perf["1-Year P&L"].apply(lambda x: f"₹{x:+,.0f}")
+    df_perf["Aug-Sep Live P&L"] = df_perf["Aug-Sep Live P&L"].apply(lambda x: f"₹{x:+,.0f}")
+    df_perf["1-Year Win Rate"] = df_perf["1-Year Win Rate"].apply(lambda x: f"{x:.1f}%")
+
+    st.markdown(f"**Initial Capital:** ₹{ic:,.0f}")
+    st.dataframe(df_perf, use_container_width=True)
+else:
+    st.info("In House Money mode, we start with ₹1,00,000. Once the balance hits ₹2,00,000, we instantly withdraw the initial ₹1,00,000 capital. We then compound the remaining 'House Money' with a 20% risk per trade.")
+    hm_data = []
+    for model_name, b_hm in [("V1 (Price Only)", bt1_hm), ("V2 (Cross-Asset)", bt2_hm), ("V3 (Professional)", bt3_hm), ("V4 (Optimized)", bt4_hm)]:
+        if b_hm:
+            hm_data.append({
+                "Model": model_name,
+                "Total Withdrawn (Safe)": b_hm.get("total_withdrawn", 0),
+                "Final Trading Capital": b_hm.get("trading_capital", 0),
+                "Net P&L": b_hm.get("net_pnl", 0),
+                "Total Trades": b_hm.get("total_trades", 0),
+                "Win Rate": b_hm.get("win_rate_pct", 0)
+            })
+    
+    if hm_data:
+        df_hm = pd.DataFrame(hm_data)
+        df_hm["Total Withdrawn (Safe)"] = df_hm["Total Withdrawn (Safe)"].apply(lambda x: f"₹{x:,.0f}")
+        df_hm["Final Trading Capital"] = df_hm["Final Trading Capital"].apply(lambda x: f"₹{x:,.0f}")
+        df_hm["Net P&L"] = df_hm["Net P&L"].apply(lambda x: f"₹{x:+,.0f}")
+        df_hm["Win Rate"] = df_hm["Win Rate"].apply(lambda x: f"{x:.1f}%")
+        st.dataframe(df_hm, use_container_width=True)
+    else:
+        st.warning("House Money backtest results are still generating...")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -262,13 +305,19 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ─────────────────────────────────────────────────────────────
 # MAIN TABS
 # ─────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
     "📊 Equity & P&L Curves",
     "🔬 Walk-Forward Analysis",
     "📋 Trade Ledger",
     "🔮 Live 30-Day Signal",
     "🛡️ Multi-Index Robustness",
-    "📅 Monthly Performance"
+    "📅 Monthly Performance",
+    "🕹️ Custom Simulation",
+    "🔴 Live Paper Trading",
+    "🕵️ Pre-Train Test",
+    "🚀 Post-Train Test",
+    "📉 Loss Diagnostics",
+    "⚡ System Upgrades"
 ])
 
 PLOTLY_LAYOUT = dict(
@@ -408,7 +457,18 @@ with tab1:
 
 # ── TAB 2: Walk-Forward ──────────────────────────────────────
 with tab2:
-    st.markdown('<div class="section-header">🔬 Walk-Forward Training Results (22 Folds)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">🔬 Walk-Forward Out-of-Sample Performance</div>', unsafe_allow_html=True)
+    
+    model_sel = st.radio("Select Walk-Forward Model", ["V1 (Price Only)", "V2 (Cross-Asset)", "V3 (Professional)", "V4 (Optimized)"], horizontal=True)
+    
+    if "V1" in model_sel:
+        wf_path = "models/walk_forward/walk_forward_results.json"
+    elif "V2" in model_sel:
+        wf_path = "models/walk_forward_v2/walk_forward_results.json"
+    elif "V3" in model_sel:
+        wf_path = "models/walk_forward_v3/walk_forward_results.json"
+    else:
+        wf_path = "models/walk_forward_v4/walk_forward_results.json"
 
     if not wf_df.empty:
         col1, col2, col3, col4 = st.columns(4)
@@ -499,10 +559,12 @@ with tab5:
                 v1_data = rob_data.get("V1", {})
                 v2_data = rob_data.get("V2", {})
                 v3_data = rob_data.get("V3", {})
+                v4_data = rob_data.get("V4", {})
             else:
                 v1_data = rob_data
                 v2_data = {}
                 v3_data = {}
+                v4_data = {}
 
             c1, c2, c3 = st.columns(3)
 
@@ -584,7 +646,7 @@ with tab6:
     
     monthly_data = []
     
-    for model_name, b1, b2 in [("V1 (Price Only)", bt1, bt2), ("V2 (Cross-Asset)", bt1_v2, bt2_v2), ("V3 (Professional)", bt1_v3, bt2_v3)]:
+    for model_name, b1, b2 in [("V1 (Price Only)", bt1, bt2), ("V2 (Cross-Asset)", bt1_v2, bt2_v2), ("V3 (Professional)", bt1_v3, bt2_v3), ("V4 (Optimized)", bt1_v4, bt2_v4)]:
         trades = []
         if b1 and "trades" in b1: trades.extend(b1["trades"])
         if b2 and "trades" in b2: trades.extend(b2["trades"])
@@ -607,7 +669,7 @@ with tab6:
         import plotly.express as px
         fig9 = px.bar(
             combined_monthly, x="Month", y="pnl_rs", color="Model", barmode="group",
-            color_discrete_map={"V1 (Price Only)": "#60a5fa", "V2 (Cross-Asset)": "#a78bfa", "V3 (Professional)": "#34d399"},
+            color_discrete_map={"V1 (Price Only)": "#60a5fa", "V2 (Cross-Asset)": "#a78bfa", "V3 (Professional)": "#34d399", "V4 (Optimized)": "#f43f5e"},
             title="Monthly P&L Comparison (₹)",
             template="plotly_dark"
         )
@@ -621,6 +683,9 @@ with tab6:
         pivot['temp_date'] = pd.to_datetime(pivot.index)
         pivot = pivot.sort_values('temp_date').drop(columns=['temp_date'])
         
+        # Add Total Row
+        pivot.loc['Total'] = pivot.sum(numeric_only=True)
+        
         for col in pivot.columns:
             pivot[col] = pivot[col].apply(lambda x: f"₹{x:+,.2f}")
         st.dataframe(pivot, use_container_width=True)
@@ -628,19 +693,108 @@ with tab6:
         st.info("No trade data available to compute monthly performance.")
 
 
+# ── TAB 7: Custom Simulation ──────────────────────────────────
+with tab7:
+    st.markdown('<div class="section-header">🕹️ Custom Simulation</div>', unsafe_allow_html=True)
+    st.caption("Run a live backtest simulation on the NIFTY 50 dataset for any custom date range.")
+    
+    import datetime
+    
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        sim_model = st.selectbox("Model Version", ["V1 (Price Only)", "V2 (Cross-Asset)", "V3 (Professional)", "V4 (Optimized)"])
+    with col_b:
+        start_date = st.date_input("Start Date", datetime.date(2026, 1, 1), min_value=datetime.date(2024, 4, 23), max_value=datetime.date(2026, 9, 11))
+    with col_c:
+        end_date = st.date_input("End Date", datetime.date(2026, 1, 31), min_value=datetime.date(2024, 4, 23), max_value=datetime.date(2026, 9, 11))
+        
+    sim_capital = st.number_input("Initial Capital (₹)", min_value=10000, value=100000, step=10000)
+    
+    if st.button("🚀 Run Simulation", type="primary"):
+        if start_date >= end_date:
+            st.error("End Date must be after Start Date.")
+        else:
+            with st.spinner(f"Running simulation for {sim_model} from {start_date} to {end_date}... This may take a moment."):
+                from app.features.feature_pipeline import FeaturePipeline
+                from app.trading.simulator import run_backtest
+                
+                # Load Raw Data
+                try:
+                    df_raw = pd.read_csv("data/Nifty50_CrossAsset_Merged.csv")
+                    df_raw['timestamp'] = pd.to_datetime(df_raw['timestamp'])
+                    df_raw = df_raw[(df_raw['timestamp'].dt.date >= start_date) & (df_raw['timestamp'].dt.date <= end_date)]
+                    df_raw = df_raw.sort_values('timestamp').reset_index(drop=True)
+                    
+                    if len(df_raw) < 100:
+                        st.warning("Not enough data in the selected date range. Try expanding the dates. (Note: Data is available from 2024-04-23 to 2026-04-23)")
+                    else:
+                        # Generate features
+                        df_feat = FeaturePipeline.generate_features(df_raw)
+                        
+                        # Determine model path
+                        is_v3 = False
+                        is_v4 = False
+                        if "V1" in sim_model:
+                            m_path = "models/walk_forward/best_model.joblib"
+                        elif "V2" in sim_model:
+                            m_path = "models/walk_forward_v2/best_model.joblib"
+                        elif "V3" in sim_model:
+                            m_path = "models/walk_forward_v3/best_model.joblib"
+                            is_v3 = True
+                        else:
+                            m_path = "models/walk_forward_v4/best_model.joblib"
+                            is_v4 = True
+                            
+                        sim_res = run_backtest(df_raw, df_feat, m_path, initial_capital=sim_capital, is_v3=is_v3, is_v4=is_v4)
+                        
+                        if sim_res and "net_pnl" in sim_res:
+                            st.success("Simulation Complete!")
+                            
+                            c1, c2, c3, c4 = st.columns(4)
+                            c1.metric("Net P&L", f"₹{sim_res['net_pnl']:,.2f}")
+                            c2.metric("Win Rate", f"{sim_res['win_rate_pct']:.1f}%")
+                            c3.metric("Total Trades", sim_res['total_trades'])
+                            c4.metric("Max Drawdown", f"{sim_res['max_drawdown_pct']:.1f}%")
+                            
+                            # Chart
+                            import plotly.graph_objects as go
+                            fig_sim = go.Figure()
+                            color_sim = "#34d399" if sim_res["net_pnl"] >= 0 else "#f87171"
+                            fig_sim.add_trace(go.Scatter(
+                                x=sim_res["equity_times"], y=sim_res["equity_curve"],
+                                mode="lines", name="Equity", line=dict(color=color_sim)
+                            ))
+                            fig_sim.update_layout(title="Simulated Equity Curve", template="plotly_dark", height=400)
+                            st.plotly_chart(fig_sim, use_container_width=True)
+                            
+                            st.markdown("### Simulated Trades")
+                            if sim_res["trades"]:
+                                st.dataframe(pd.DataFrame(sim_res["trades"]), use_container_width=True)
+                            
+                except Exception as e:
+                    st.error(f"Error running simulation: {e}")
+
+
 # ── TAB 3: Trade Ledger ──────────────────────────────────────
 with tab3:
-    st.markdown('<div class="section-header">📋 Jan–Apr 2026 Trade Ledger</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📋 1-Year Trade Ledger (Apr \'25 - Apr \'26)</div>', unsafe_allow_html=True)
 
-    model_sel = st.radio("Model", ["V1 (Price Only)", "V2 (Cross-Asset)", "V3 (Professional Strategy)"], horizontal=True)
-    mode = st.radio("Dataset", ["Jan–Apr 2026 Backtest", "30-Day Live (Aug–Sep 2026)"], horizontal=True)
+    model_sel = st.radio("Model", ["V1 (Price Only)", "V2 (Cross-Asset)", "V3 (Professional Strategy)", "V4 (Optimized)"], horizontal=True)
+    
+    if mode_sel == "House Money (20% Compounding)":
+        mode = "1-Year House Money"
+        st.info("Showing House Money Compounding trades (1-Year Backtest only).")
+    else:
+        mode = st.radio("Dataset", ["1-Year Backtest (Apr '25 - Apr '26)", "30-Day Live (Aug–Sep 2026)"], horizontal=True)
     
     if model_sel == "V1 (Price Only)":
-        bt_sel = bt1 if mode.startswith("Jan") else bt2
+        bt_sel = bt1_hm if mode_sel == "House Money (20% Compounding)" else (bt1 if mode.startswith("1-Year") else bt2)
     elif model_sel == "V2 (Cross-Asset)":
-        bt_sel = bt1_v2 if mode.startswith("Jan") else bt2_v2
+        bt_sel = bt2_hm if mode_sel == "House Money (20% Compounding)" else (bt1_v2 if mode.startswith("1-Year") else bt2_v2)
+    elif model_sel == "V3 (Professional Strategy)":
+        bt_sel = bt3_hm if mode_sel == "House Money (20% Compounding)" else (bt1_v3 if mode.startswith("1-Year") else bt2_v3)
     else:
-        bt_sel = bt1_v3 if mode.startswith("Jan") else bt2_v3
+        bt_sel = bt4_hm if mode_sel == "House Money (20% Compounding)" else (bt1_v4 if mode.startswith("1-Year") else bt2_v4)
 
     if bt_sel:
         t_df = pd.DataFrame(bt_sel["trades"])
@@ -648,8 +802,12 @@ with tab3:
             if "quantity" not in t_df.columns:
                 t_df["quantity"] = 50
                 
-            t_df["entry_time"] = pd.to_datetime(t_df["entry_time"]).dt.strftime("%d %b %Y %H:%M")
-            t_df["exit_time"]  = pd.to_datetime(t_df["exit_time"]).dt.strftime("%d %b %Y %H:%M")
+            try:
+                t_df["entry_time"] = pd.to_datetime(t_df["entry_time"]).dt.strftime("%d %b %Y %H:%M")
+                t_df["exit_time"]  = pd.to_datetime(t_df["exit_time"]).dt.strftime("%d %b %Y %H:%M")
+            except Exception:
+                pass
+                
             t_df["confidence"] = (t_df["confidence"]*100).round(1).astype(str) + "%"
 
             col1, col2, col3 = st.columns(3)
@@ -767,6 +925,18 @@ with tab4:
                 mode="lines", name="V3 Model (Professional)",
                 line=dict(color=color8_v3, width=2.0)
             ), row=1, col=1)
+            
+        # V4 Trace
+        if bt2_v4:
+            eq2_v4 = bt2_v4["equity_curve"]
+            t2_v4  = bt2_v4["equity_times"]
+            step_v4 = max(1, len(eq2_v4)//600)
+            color8_v4 = "#f43f5e"
+            fig8.add_trace(go.Scatter(
+                x=t2_v4[::step_v4], y=[eq2_v4[i] for i in range(0, len(eq2_v4), step_v4)],
+                mode="lines", name="V4 Model (Optimized)",
+                line=dict(color=color8_v4, width=2.0)
+            ), row=1, col=1)
         fig8.add_hline(y=bt2["initial_capital"], line_dash="dot", line_color="rgba(148,163,184,0.4)", row=1, col=1)
 
         fig8.add_trace(go.Scatter(
@@ -788,10 +958,10 @@ with tab4:
 
         # Long vs Short Breakdown
         st.markdown('<div class="section-header">📈 Directional Breakdown (Long / Call vs Short / Put)</div>', unsafe_allow_html=True)
-        st.caption("Combined performance of LONG (buying/calls) vs SHORT (selling/puts) across Jan-Apr & Live 30-Day datasets.")
+        st.caption("Combined performance of LONG (buying/calls) vs SHORT (selling/puts) across 1-Year & Live 30-Day datasets.")
         
         dir_data = []
-        for model_name, b1, b2 in [("V1 (Price Only)", bt1, bt2), ("V2 (Cross-Asset)", bt1_v2, bt2_v2), ("V3 (Professional)", bt1_v3, bt2_v3)]:
+        for model_name, b1, b2 in [("V1 (Price Only)", bt1, bt2), ("V2 (Cross-Asset)", bt1_v2, bt2_v2), ("V3 (Professional)", bt1_v3, bt2_v3), ("V4 (Optimized)", bt1_v4, bt2_v4)]:
             m_trades = []
             if b1 and "trades" in b1: m_trades.extend(b1["trades"])
             if b2 and "trades" in b2: m_trades.extend(b2["trades"])
@@ -866,6 +1036,449 @@ with tab4:
     else:
         st.info("30-day live backtest results not found. Run `scripts/run_backtest_simulation.py` first.")
 
+# ── TAB 8: Live Paper Trading ─────────────────────────────────
+with tab8:
+    st.markdown('<div class="section-header">🔴 Live Paper Trading (Angel One Feed)</div>', unsafe_allow_html=True)
+    
+    live_file = "data/live_paper_trading.json"
+    if os.path.exists(live_file):
+        import json
+        with open(live_file, "r") as f:
+            live_data = json.load(f)
+            
+        st.caption(f"Last Updated: {datetime.datetime.now().strftime('%d %b %Y, %H:%M:%S IST')}")
+        
+        models_data = live_data.get("models", {})
+        if models_data:
+            c1, c2, c3, c4 = st.columns(4)
+            cols = [c1, c2, c3, c4]
+            for i, (name, m_data) in enumerate(models_data.items()):
+                with cols[i % 4]:
+                    pnl = m_data.get("net_pnl", 0)
+                    color = "green" if pnl >= 0 else "red"
+                    pos = m_data.get("open_position")
+                    pos_str = f"ACTIVE: {pos['direction']} @ {pos['entry_price']}" if pos else "FLAT"
+                    st.markdown(metric_html(f"{name} P&L", f"₹{pnl:,.2f}", color), unsafe_allow_html=True)
+                    st.caption(f"Trades: {len(m_data.get('trades', []))} | {pos_str}")
+                    
+        # Candlestick Chart
+        md = live_data.get("market_data", {})
+        if md and len(md.get("timestamp", [])) > 0:
+            fig_live = go.Figure()
+            
+            # Candles
+            fig_live.add_trace(go.Candlestick(
+                x=md["timestamp"],
+                open=md["open"],
+                high=md["high"],
+                low=md["low"],
+                close=md["close"],
+                name="NIFTY 50"
+            ))
+            
+            # Overlay Trades
+            model_colors = {"V1": "#34d399", "V2": "#8b5cf6", "V3": "#eab308", "V4": "#f43f5e"}
+            
+            for name, m_data in models_data.items():
+                trades = m_data.get("trades", [])
+                
+                # Render closed trades
+                buy_times = []
+                buy_prices = []
+                sell_times = []
+                sell_prices = []
+                
+                for t in trades:
+                    if t["direction"] == "LONG":
+                        buy_times.append(t["entry_time"])
+                        buy_prices.append(t["entry_price"])
+                        sell_times.append(t["exit_time"])
+                        sell_prices.append(t["exit_price"])
+                    else:
+                        sell_times.append(t["entry_time"])
+                        sell_prices.append(t["entry_price"])
+                        buy_times.append(t["exit_time"])
+                        buy_prices.append(t["exit_price"])
+                        
+                # Scatter markers
+                if buy_times:
+                    fig_live.add_trace(go.Scatter(
+                        x=buy_times, y=buy_prices, mode="markers",
+                        marker=dict(symbol="triangle-up", size=12, color=model_colors.get(name, "green")),
+                        name=f"{name} Buy"
+                    ))
+                if sell_times:
+                    fig_live.add_trace(go.Scatter(
+                        x=sell_times, y=sell_prices, mode="markers",
+                        marker=dict(symbol="triangle-down", size=12, color=model_colors.get(name, "red")),
+                        name=f"{name} Sell"
+                    ))
+                    
+                # Render open position
+                pos = m_data.get("open_position")
+                if pos:
+                    sym = "triangle-up" if pos["direction"] == "LONG" else "triangle-down"
+                    fig_live.add_trace(go.Scatter(
+                        x=[pos["entry_time"]], y=[pos["entry_price"]], mode="markers",
+                        marker=dict(symbol=sym, size=15, color=model_colors.get(name, "yellow"), line=dict(width=2, color="white")),
+                        name=f"{name} ACTIVE {pos['direction']}"
+                    ))
+            
+            fig_live.update_layout(
+                title="Live 1-Minute NIFTY 50 Candlesticks & Trades",
+                xaxis_rangeslider_visible=False,
+                height=600,
+                **PLOTLY_LAYOUT
+            )
+            st.plotly_chart(fig_live, use_container_width=True)
+            
+            # Render Option Chain
+            oc = live_data.get("option_chain", [])
+            if oc:
+                st.markdown('<div class="section-header">⛓️ Live Option Chain (Nearest Expiry)</div>', unsafe_allow_html=True)
+                df_oc = pd.DataFrame(oc)
+                if not df_oc.empty:
+                    df_oc = df_oc.rename(columns={
+                        "CE_OI": "Call OI",
+                        "CE_LTP": "Call Price",
+                        "Strike": "Strike",
+                        "PE_LTP": "Put Price",
+                        "PE_OI": "Put OI"
+                    })
+                    
+                    # Ensure all columns exist (in case the JSON was from before the OI update)
+                    for c in ["Call OI", "Call Price", "Strike", "Put Price", "Put OI"]:
+                        if c not in df_oc.columns:
+                            df_oc[c] = None
+                            
+                    df_oc = df_oc[["Call OI", "Call Price", "Strike", "Put Price", "Put OI"]]
+                    
+                    # Formatting
+                    df_oc["Call OI"] = df_oc["Call OI"].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "-")
+                    df_oc["Put OI"] = df_oc["Put OI"].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "-")
+                    df_oc["Call Price"] = df_oc["Call Price"].apply(lambda x: f"₹{x:.2f}" if pd.notnull(x) else "-")
+                    df_oc["Put Price"] = df_oc["Put Price"].apply(lambda x: f"₹{x:.2f}" if pd.notnull(x) else "-")
+                    
+                    last_close = md["close"][-1] if md.get("close") else 0
+                    atm_strike = round(last_close / 50) * 50
+                    
+                    def style_oc(row):
+                        styles = [""] * len(row)
+                        strike = row["Strike"]
+                        
+                        # ITM shading (Groww style)
+                        itm_bg = "background-color: rgba(255,255,255,0.07);"
+                        
+                        if strike == atm_strike:
+                            # ATM Row
+                            return ["background-color: rgba(59,130,246,0.25); font-weight: bold; color: #60a5fa"] * len(row)
+                        elif strike < atm_strike:
+                            # Call is ITM (first two columns)
+                            styles[0] = itm_bg # Call OI
+                            styles[1] = itm_bg # Call Price
+                        elif strike > atm_strike:
+                            # Put is ITM (last two columns)
+                            styles[3] = itm_bg # Put Price
+                            styles[4] = itm_bg # Put OI
+                            
+                        # Make strike column bold
+                        styles[2] = "font-weight: bold; color: #e2e8f0;"
+                        
+                        return styles
+                        
+                    st.dataframe(df_oc.style.apply(style_oc, axis=1), use_container_width=True)
+            
+            # Render autorefresh
+            from streamlit_autorefresh import st_autorefresh
+            st_autorefresh(interval=30000, key="live_paper_trading_refresh")
+            st.caption("Auto-refreshing every 30 seconds to fetch the latest trades.")
+    else:
+        st.warning("Live Paper Trading data not found. Ensure `scripts/run_paper_trading.py` is running.")
+
+# ── TAB 9: UNSEEN DATA BACKTEST ──────────────────────────────
+with tab9:
+    st.markdown('<div class="section-header">🕵️ Unseen Data Backtest (Sept 2023 - Mar 2024)</div>', unsafe_allow_html=True)
+    st.caption("Testing all models on completely unseen historical data (6.5 months) before the training period.")
+    
+    unseen_files = {
+        "V1 (Price Only)": "data/backtest_results/backtest_unseen_pretrain_v1_hm.json",
+        "V2 (Cross-Asset)": "data/backtest_results/backtest_unseen_pretrain_v2_hm.json",
+        "V3 (Pro)": "data/backtest_results/backtest_unseen_pretrain_v3_hm.json",
+        "V4 (Pro + Walk-Forward)": "data/backtest_results/backtest_unseen_pretrain_v4_hm.json"
+    }
+    
+    fig_unseen = go.Figure()
+    colors_unseen = ["#818cf8", "#34d399", "#f472b6", "#fbbf24"]
+    
+    metrics_unseen = []
+    monthly_trades_unseen = []
+    
+    for i, (name, path) in enumerate(unseen_files.items()):
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                data = json.load(f)
+                
+            eq = data["equity_curve"]
+            t = data["equity_times"]
+            step = max(1, len(eq)//1000)
+            
+            fig_unseen.add_trace(go.Scatter(
+                x=t[::step], y=eq[::step],
+                mode="lines", name=name,
+                line=dict(color=colors_unseen[i], width=2)
+            ))
+            
+            metrics_unseen.append({
+                "Model": name,
+                "Net P&L (₹)": data.get("net_pnl", 0),
+                "Max Drawdown %": data.get("max_drawdown_pct", 0),
+                "Win Rate %": data.get("win_rate_pct", 0),
+                "Total Trades": data.get("total_trades", 0)
+            })
+            
+            if "trades" in data and data["trades"]:
+                df_t = pd.DataFrame(data["trades"])
+                df_t['entry_time'] = pd.to_datetime(df_t['entry_time'])
+                df_t['Month'] = df_t['entry_time'].dt.strftime('%b %Y')
+                monthly_pnl = df_t.groupby('Month')['pnl_rs'].sum().reset_index()
+                monthly_pnl['Model'] = name
+                monthly_trades_unseen.append(monthly_pnl)
+            
+    if metrics_unseen:
+        fig_unseen.add_hline(y=100000, line_dash="dash", line_color="rgba(148,163,184,0.4)")
+        fig_unseen.update_layout(**PLOTLY_LAYOUT)
+        fig_unseen.update_layout(title="Equity Curves on Unseen Data (House Money Strategy)", height=450)
+        st.plotly_chart(fig_unseen, use_container_width=True)
+        
+        st.markdown("### 📊 Performance Metrics")
+        df_metrics = pd.DataFrame(metrics_unseen)
+        df_metrics["Net P&L (₹)"] = df_metrics["Net P&L (₹)"].apply(lambda x: f"₹{x:+,.2f}")
+        df_metrics["Max Drawdown %"] = df_metrics["Max Drawdown %"].apply(lambda x: f"{x:.2f}%")
+        df_metrics["Win Rate %"] = df_metrics["Win Rate %"].apply(lambda x: f"{x:.1f}%")
+        st.dataframe(df_metrics, use_container_width=True)
+        
+        if monthly_trades_unseen:
+            import plotly.express as px
+            combined_monthly = pd.concat(monthly_trades_unseen)
+            combined_monthly['date'] = pd.to_datetime(combined_monthly['Month'])
+            combined_monthly = combined_monthly.sort_values('date')
+            
+            fig_bar = px.bar(
+                combined_monthly, x="Month", y="pnl_rs", color="Model", barmode="group",
+                color_discrete_map={"V1 (Price Only)": "#818cf8", "V2 (Cross-Asset)": "#34d399", "V3 (Pro)": "#f472b6", "V4 (Pro + Walk-Forward)": "#fbbf24"},
+                title="Monthly P&L Comparison (₹)",
+                template="plotly_dark"
+            )
+            fig_bar.update_layout(height=450, **PLOTLY_LAYOUT)
+            st.plotly_chart(fig_bar, use_container_width=True)
+            
+            st.markdown("### 📋 Monthly P&L Breakdown")
+            pivot = combined_monthly.pivot(index='Month', columns='Model', values='pnl_rs').fillna(0)
+            pivot['date'] = pd.to_datetime(pivot.index)
+            pivot = pivot.sort_values('date').drop(columns=['date'])
+            for col in pivot.columns:
+                pivot[col] = pivot[col].apply(lambda x: f"₹{x:+,.2f}")
+            st.dataframe(pivot, use_container_width=True)
+    else:
+        st.info("No unseen backtest data found. Run `scripts/run_unseen_backtest.py` first.")
+
+# ── TAB 10: POST-TRAINING DATA BACKTEST ──────────────────────────────
+with tab10:
+    st.markdown('<div class="section-header">🚀 Post-Training Data Backtest (Apr 2026 - Sept 2026)</div>', unsafe_allow_html=True)
+    st.caption("Testing all models on the recent out-of-sample period (4.5 months) immediately following the training cutoff.")
+    
+    posttrain_files = {
+        "V1 (Price Only)": "data/backtest_results/backtest_posttrain_v1_hm.json",
+        "V2 (Cross-Asset)": "data/backtest_results/backtest_posttrain_v2_hm.json",
+        "V3 (Pro)": "data/backtest_results/backtest_posttrain_v3_hm.json",
+        "V4 (Pro + Walk-Forward)": "data/backtest_results/backtest_posttrain_v4_hm.json"
+    }
+    
+    fig_post = go.Figure()
+    
+    metrics_post = []
+    monthly_trades_post = []
+    
+    for i, (name, path) in enumerate(posttrain_files.items()):
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                data = json.load(f)
+                
+            eq = data["equity_curve"]
+            t = data["equity_times"]
+            step = max(1, len(eq)//1000)
+            
+            fig_post.add_trace(go.Scatter(
+                x=t[::step], y=eq[::step],
+                mode="lines", name=name,
+                line=dict(color=colors_unseen[i], width=2)
+            ))
+            
+            metrics_post.append({
+                "Model": name,
+                "Net P&L (₹)": data.get("net_pnl", 0),
+                "Max Drawdown %": data.get("max_drawdown_pct", 0),
+                "Win Rate %": data.get("win_rate_pct", 0),
+                "Total Trades": data.get("total_trades", 0)
+            })
+            
+            if "trades" in data and data["trades"]:
+                df_t = pd.DataFrame(data["trades"])
+                df_t['entry_time'] = pd.to_datetime(df_t['entry_time'])
+                df_t['Month'] = df_t['entry_time'].dt.strftime('%b %Y')
+                monthly_pnl = df_t.groupby('Month')['pnl_rs'].sum().reset_index()
+                monthly_pnl['Model'] = name
+                monthly_trades_post.append(monthly_pnl)
+            
+    if metrics_post:
+        fig_post.add_hline(y=100000, line_dash="dash", line_color="rgba(148,163,184,0.4)")
+        fig_post.update_layout(**PLOTLY_LAYOUT)
+        fig_post.update_layout(title="Equity Curves on Post-Training Data (House Money Strategy)", height=450)
+        st.plotly_chart(fig_post, use_container_width=True)
+        
+        st.markdown("### 📊 Performance Metrics")
+        df_metrics_post = pd.DataFrame(metrics_post)
+        df_metrics_post["Net P&L (₹)"] = df_metrics_post["Net P&L (₹)"].apply(lambda x: f"₹{x:+,.2f}")
+        df_metrics_post["Max Drawdown %"] = df_metrics_post["Max Drawdown %"].apply(lambda x: f"{x:.2f}%")
+        df_metrics_post["Win Rate %"] = df_metrics_post["Win Rate %"].apply(lambda x: f"{x:.1f}%")
+        st.dataframe(df_metrics_post, use_container_width=True)
+        
+        if monthly_trades_post:
+            import plotly.express as px
+            combined_monthly_post = pd.concat(monthly_trades_post)
+            combined_monthly_post['date'] = pd.to_datetime(combined_monthly_post['Month'])
+            combined_monthly_post = combined_monthly_post.sort_values('date')
+            
+            fig_bar_post = px.bar(
+                combined_monthly_post, x="Month", y="pnl_rs", color="Model", barmode="group",
+                color_discrete_map={"V1 (Price Only)": "#818cf8", "V2 (Cross-Asset)": "#34d399", "V3 (Pro)": "#f472b6", "V4 (Pro + Walk-Forward)": "#fbbf24"},
+                title="Monthly P&L Comparison (₹)",
+                template="plotly_dark"
+            )
+            fig_bar_post.update_layout(height=450, **PLOTLY_LAYOUT)
+            st.plotly_chart(fig_bar_post, use_container_width=True)
+            
+            st.markdown("### 📋 Monthly P&L Breakdown")
+            pivot_post = combined_monthly_post.pivot(index='Month', columns='Model', values='pnl_rs').fillna(0)
+            pivot_post['date'] = pd.to_datetime(pivot_post.index)
+            pivot_post = pivot_post.sort_values('date').drop(columns=['date'])
+            for col in pivot_post.columns:
+                pivot_post[col] = pivot_post[col].apply(lambda x: f"₹{x:+,.2f}")
+            st.dataframe(pivot_post, use_container_width=True)
+    else:
+        st.info("No post-training backtest data found.")
+
+# ── TAB 12: SYSTEM UPGRADES REPORT ──────────────────────────────────
+with tab12:
+    st.markdown('<div class="section-header">⚡ System Upgrade Report: Futures → Options + Calibration</div>', unsafe_allow_html=True)
+    st.caption("A complete before/after analysis showing how each upgrade phase impacted real-world P&L with slippage, brokerage, and Option Greeks.")
+    
+    # ── Phase Summary Cards ──
+    st.markdown("### 🏗️ Upgrade Phases Completed")
+    
+    p1, p2, p3 = st.columns(3)
+    with p1:
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#1e1b4b,#312e81); padding:1.2rem; border-radius:12px; border:1px solid #4338ca;">
+            <h4 style="color:#818cf8; margin:0;">Phase 1: Friction Modeling</h4>
+            <p style="color:#c7d2fe; font-size:0.85rem; margin:0.5rem 0 0 0;">
+            ₹60 brokerage + 0.05% slippage injected into every trade. Exposed that Futures-based simulation was non-viable with ₹1L capital.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    with p2:
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#064e3b,#065f46); padding:1.2rem; border-radius:12px; border:1px solid #059669;">
+            <h4 style="color:#34d399; margin:0;">Phase 2: Option Greeks</h4>
+            <p style="color:#a7f3d0; font-size:0.85rem; margin:0.5rem 0 0 0;">
+            Delta (0.5), Theta decay (₹0.20/min/lot), and asymmetrical targets (Calls: 1.2% / Puts: 1.8%). Slippage dropped from ₹1,200 → ₹7.50.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    with p3:
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#78350f,#92400e); padding:1.2rem; border-radius:12px; border:1px solid #d97706;">
+            <h4 style="color:#fbbf24; margin:0;">Phase 3: Probability Calibration</h4>
+            <p style="color:#fde68a; font-size:0.85rem; margin:0.5rem 0 0 0;">
+            Isotonic Regression forces XGBoost confidence to match true win rates. V4's raw 83.5% confidence was actually only 31.6% accurate.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # ── Before/After Comparison Table ──
+    st.markdown("### 📊 V4 Model Performance Across Upgrade Phases")
+    
+    phase_data = pd.DataFrame({
+        "Phase": [
+            "Baseline (No Friction)",
+            "Phase 1: + Slippage & Brokerage (Futures)",
+            "Phase 2: + Option Greeks + Asymmetry",
+            "Phase 3: + Probability Calibration"
+        ],
+        "Simulation Mode": ["Futures (Spot 1:1)", "Futures (Spot 1:1)", "Options (Delta 0.5)", "Options (Delta 0.5) + Calibrated"],
+        "Slippage/Trade": ["₹0", "~₹1,200", "~₹7.50", "~₹7.50"],
+        "V4 Net P&L": ["₹+1,10,891", "₹-6,83,422", "₹+26,845", "₹+27,179"],
+        "Status": ["⚠️ Unrealistic", "❌ Bankrupt", "✅ Viable", "✅ Calibrated & Viable"]
+    })
+    
+    st.dataframe(phase_data, use_container_width=True, hide_index=True)
+    
+    # ── Calibration Insights ──
+    st.markdown("---")
+    st.markdown("### 🎯 Probability Calibration Insights")
+    st.info("XGBoost's `predict_proba()` outputs are NOT true probabilities. Isotonic Regression maps raw scores to actual observed win rates.")
+    
+    cal_data = pd.DataFrame({
+        "Model": ["V1 (Price Only)", "V2 (Cross-Asset)", "V3 (Pro)", "V4 (Pro + WF)"],
+        "Raw Mean Confidence": ["71.7%", "72.5%", "71.5%", "83.5%"],
+        "True Accuracy": ["63.9%", "39.5%", "40.6%", "31.6%"],
+        "Overconfidence Gap": ["+7.8%", "+33.0%", "+30.9%", "+51.9%"],
+        "Net P&L (Calibrated)": ["₹-13,841", "₹-26,198", "₹+804", "₹+27,179"]
+    })
+    
+    st.dataframe(cal_data, use_container_width=True, hide_index=True)
+    
+    st.markdown("### 🧠 The V4 Paradox: Low Accuracy, High Profit")
+    st.success("""
+    **V4 has only 33.8% win rate but generated ₹+27,179 profit.** This is the signature of a momentum/trend-following strategy:
+    - Losing trades are small (Chandelier Exit + ATR trailing stop cuts losses early)
+    - Winning trades are massive (asymmetric targets let winners run)
+    - The reward-to-risk ratio overwhelms the low hit rate
+    """)
+    
+    # ── Current System Architecture ──
+    st.markdown("---")
+    st.markdown("### 🏛️ Current System Architecture")
+    
+    arch_cols = st.columns(2)
+    with arch_cols[0]:
+        st.markdown("""
+        **Entry Filters (Gates):**
+        - 🕐 Lunch Hour Trap (12-1 PM blocked unless >95% conf)
+        - 📊 VSA Volume Filter (vol_ratio < 1.0 blocked)
+        - 📈 ADX Trend Filter (ADX < 20 blocked for V4)
+        - 🎯 Calibrated Confidence Threshold
+        """)
+    with arch_cols[1]:
+        st.markdown("""
+        **Exit Logic:**
+        - 🎯 Asymmetric Targets (Calls: 1.2%, Puts: 1.8%)
+        - 🔔 ATR Chandelier Exit (3x initial → 2x trailing)
+        - ⏱️ Dynamic Hold Time (scaled by ATR regime)
+        - 💰 Breakeven Lock (V4: activates at 0.5x ATR profit)
+        """)
+    
+    st.markdown("""
+    **P&L Calculation:**
+    - Option Delta: 0.50 (ATM proxy)
+    - Theta Decay: ₹0.20 per minute per lot
+    - Slippage: 0.05% on ₹150 premium = ~₹7.50 per trade
+    - Brokerage: ₹60 flat per round trip
+    """)
+
+
 # ─────────────────────────────────────────────────────────────
 # FOOTER
 # ─────────────────────────────────────────────────────────────
@@ -873,7 +1486,81 @@ st.markdown("---")
 st.markdown("""
 <div style='text-align:center; color:#475569; font-size:0.78rem; padding:0.5rem 0;'>
     NIFTY AI Trader &nbsp;·&nbsp; XGBoost Walk-Forward ML &nbsp;·&nbsp;
-    3-Class Regime Detection &nbsp;·&nbsp; 
+    3-Class Regime Detection &nbsp;·&nbsp; Options Greek Simulation &nbsp;·&nbsp;
     <span style='color:#6366f1'>Not financial advice — for research use only</span>
 </div>
 """, unsafe_allow_html=True)
+
+with tab11:
+    st.markdown('<div class="section-header">📉 Deep-Dive Loss Diagnostics</div>', unsafe_allow_html=True)
+    st.caption("Identify the root causes of drawdowns: Which exit reasons trigger the most losses, and in which market regimes do they occur?")
+    
+    loss_file = "data/backtest_results/loss_analysis.json"
+    if os.path.exists(loss_file):
+        with open(loss_file, "r") as f:
+            loss_data = json.load(f)
+            
+        if loss_data:
+            model_keys = list(loss_data.keys())
+            
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                selected_model = st.selectbox("Select Model Test to Analyze", model_keys, index=len(model_keys)-1)
+            
+            selected_data = loss_data[selected_model]
+            trades_loss = pd.DataFrame(selected_data["trades"])
+            
+            if not trades_loss.empty:
+                st.markdown(f"**Total Losing Trades Analysed:** {len(trades_loss)} | **Total Money Lost:** ₹{abs(trades_loss['pnl_rs'].sum()):,.2f}")
+                
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    # Losses by Exit Reason
+                    reason_counts = trades_loss['exit_reason'].value_counts().reset_index()
+                    reason_counts.columns = ['Exit Reason', 'Count']
+                    import plotly.express as px
+                    fig_reason = px.pie(reason_counts, values='Count', names='Exit Reason', 
+                                      title="Losses by Exit Reason", hole=0.4,
+                                      color_discrete_sequence=px.colors.sequential.RdBu)
+                    fig_reason.update_layout(template="plotly_dark", height=350, margin=dict(t=40, b=0, l=0, r=0))
+                    st.plotly_chart(fig_reason, use_container_width=True)
+                
+                with cc2:
+                    # Losses by Volatility Regime
+                    vol_counts = trades_loss['volatility_regime'].value_counts().reset_index()
+                    vol_counts.columns = ['Volatility Regime', 'Count']
+                    fig_vol = px.pie(vol_counts, values='Count', names='Volatility Regime', 
+                                      title="Losses by Volatility Regime", hole=0.4,
+                                      color_discrete_sequence=px.colors.sequential.Plasma)
+                    fig_vol.update_layout(template="plotly_dark", height=350, margin=dict(t=40, b=0, l=0, r=0))
+                    st.plotly_chart(fig_vol, use_container_width=True)
+                    
+                st.markdown("### 🔍 The 'Hold Expiry' Mismatch Analysis")
+                st.info("Hypothesis: If 'HOLD_EXPIRY' (Time Stop) losses are heavily clustered in 'Low Volatility (Chop)' regimes, it proves the strategy is timing out due to lack of momentum, not bad direction.")
+                
+                # Cross-tabulate Exit Reason vs Volatility Regime
+                cross_tab = pd.crosstab(trades_loss['exit_reason'], trades_loss['volatility_regime'])
+                st.dataframe(cross_tab, use_container_width=True)
+                
+                fig_cross = px.bar(trades_loss, x="volatility_regime", color="exit_reason",
+                                  title="Exit Reasons Across Different Volatility Regimes",
+                                  barmode="group", template="plotly_dark")
+                fig_cross.update_layout(height=400, **PLOTLY_LAYOUT)
+                st.plotly_chart(fig_cross, use_container_width=True)
+                
+                st.markdown("### 📉 Losses by Trend Regime (SMA Context)")
+                trend_counts = trades_loss['trend_regime'].value_counts().reset_index()
+                trend_counts.columns = ['Trend Regime', 'Count']
+                fig_trend = px.bar(trend_counts, x='Trend Regime', y='Count',
+                                 color='Trend Regime', title="Losses in Different Trends",
+                                 template="plotly_dark")
+                fig_trend.update_layout(height=350, **PLOTLY_LAYOUT)
+                st.plotly_chart(fig_trend, use_container_width=True)
+                
+            else:
+                st.success("No losing trades found in this dataset! (Wow!)")
+        else:
+            st.info("Loss data is empty.")
+    else:
+        st.info("Run `scripts/generate_loss_analysis.py` to view this tab.")
+

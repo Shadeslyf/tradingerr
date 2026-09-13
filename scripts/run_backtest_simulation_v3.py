@@ -269,20 +269,20 @@ def main():
     model = joblib.load(MODEL_PATH)
     logger.info("Model loaded successfully.")
 
-    # ── BACKTEST 1: Jan 2026 → Apr 2026 ─────────────────────
-    logger.info("\n=== BACKTEST 1: Jan 2026 → Apr 2026 (₹1,00,000 capital) ===")
+    # ── BACKTEST 1: Apr 2025 → Apr 2026 ─────────────────────
+    logger.info("\n=== BACKTEST 1: Apr 2025 → Apr 2026 (₹1,00,000 capital) ===")
     raw_2y = load_and_clean(RAW_2Y_CSV)
     jan_apr = raw_2y[
-        (raw_2y["timestamp"] >= "2026-01-01") &
+        (raw_2y["timestamp"] >= "2025-04-23") &
         (raw_2y["timestamp"] <  "2026-04-30")
     ].copy()
     logger.info(f"Slice: {len(jan_apr):,} bars  ({jan_apr['timestamp'].min().date()} → {jan_apr['timestamp'].max().date()})")
 
     feats_1 = build_features(jan_apr)
     if feats_1.empty:
-        logger.error("Feature build returned empty for Jan-Apr 2026!")
+        logger.error("Feature build returned empty for Apr 2025 - Apr 2026!")
     else:
-        result_1 = run_backtest(feats_1, model, INITIAL_CAPITAL, "Jan-Apr 2026 Backtest")
+        result_1 = run_backtest(feats_1, model, INITIAL_CAPITAL, "1-Year Backtest (Apr '25 - Apr '26)")
         out_1 = OUT_JSON_MAIN
         with open(out_1, "w") as f:
             json.dump(result_1, f, indent=2)
