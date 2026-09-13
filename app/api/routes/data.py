@@ -76,7 +76,9 @@ def get_backtest_result(result_id: str):
         raise HTTPException(status_code=404, detail="Result not found")
         
     with open(path, "r") as f:
-        return json.load(f)
+        data = json.load(f)
+        data["id"] = result_id
+        return data
 
 @router.get("/paper-trading/state")
 def get_paper_trading_state():

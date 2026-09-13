@@ -54,7 +54,7 @@ def run_training_pipeline(job_id: str, request: TrainRequest):
 
         # 3. Labeling (use advanced 3-class by default)
         logger.info(f"Job {job_id}: Labeling data...")
-        labeled_df = RegimeLabeler.apply_advanced_regime_labeling(df_slice.set_index("timestamp"))
+        labeled_df = RegimeLabeler.apply_3class_regime_labeling(df_slice.set_index("timestamp"))
         labeled_df = labeled_df.dropna(subset=["label"])
 
         # Align features with labels
