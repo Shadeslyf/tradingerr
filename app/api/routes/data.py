@@ -1,13 +1,66 @@
 import os
 import json
 import shutil
+import time
+import subprocess
+from datetime import datetime
+from loguru import logger
 import pandas as pd
 from fastapi import APIRouter, HTTPException
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from app.api.jobs import get_job, get_all_jobs
 
 router = APIRouter()
+
+paper_trading_process: Optional[subprocess.Popen] = None
+
+@router.post("/paper-trading/start")
+def start_paper_trading():
+    global paper_trading_process
+    if paper_trading_process is not None and paper_trading_process.poll() is None:
+        return {"status": "already running"}
+    
+    # Run the script using the current virtual environment's python
+    python_exec = "python" 
+    if os.path.exists("venv/bin/python"):
+        python_exec = "venv/bin/python"
+        
+    paper_trading_process = subprocess.Popen([python_exec, "scripts/run_paper_trading.py"])
+    logger.info("Paper trading script started via API")
+    return {"status": "started"}
+
+@router.post("/paper-trading/stop")
+def stop_paper_trading():
+    global paper_trading_process
+    if paper_trading_process is not None and paper_trading_process.poll() is None:
+        paper_trading_process.terminate()
+        paper_trading_process.wait()
+        paper_trading_process = None
+        logger.info("Paper trading script stopped via API")
+        return {"status": "stopped"}
+    return {"status": "not running"}
+
+@router.get("/health")
+def get_health():
+    state_path = "data/live_paper_trading.json"
+    is_live = False
+    
+    global paper_trading_process
+    is_running = paper_trading_process is not None and paper_trading_process.poll() is None
+    
+    if os.path.exists(state_path):
+        mtime = os.path.getmtime(state_path)
+        # Consider live if updated in the last 2 minutes and the process is actually running
+        if time.time() - mtime < 120 and is_running:
+            is_live = True
+            
+    return {
+        "status": "healthy",
+        "live_feed_status": "active" if is_live else "inactive",
+        "is_running": is_running,
+        "timestamp": datetime.now().isoformat()
+    }
 
 @router.get("/jobs")
 def list_jobs():

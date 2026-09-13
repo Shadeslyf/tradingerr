@@ -6,12 +6,29 @@ import joblib
 from app.risk.position_sizing import PositionSizer
 
 # Strategy params
-LOT_SIZE      = 50
 STOP_LOSS_PCT = 0.5   # 0.5% (used for V1/V2)
 TARGET_PCT    = 1.5   # 1.5%
 HOLD_BARS     = 60
 
 REGIME_MAP = {0: "BULLISH", 1: "RANGE", 2: "BEARISH"}
+
+def get_dynamic_lot_size(dt: pd.Timestamp) -> int:
+    if dt >= pd.Timestamp("2026-01-01"):
+        return 65
+    elif dt >= pd.Timestamp("2024-11-01"):
+        return 75
+    elif dt >= pd.Timestamp("2024-04-01"):
+        return 25
+    elif dt >= pd.Timestamp("2021-07-01"):
+        return 50
+    elif dt >= pd.Timestamp("2015-11-01"):
+        return 75
+    elif dt >= pd.Timestamp("2007-01-01"):
+        return 50
+    elif dt >= pd.Timestamp("2005-01-01"):
+        return 100
+    else:
+        return 200
 
 def _max_drawdown(equity: list, initial: float) -> float:
     if not equity:
@@ -152,21 +169,23 @@ def run_backtest(df_raw: pd.DataFrame, df_feat: pd.DataFrame, model_path: str, i
             lowest_low = entry_price
             breakeven_activated = False
 
+            lot_size = get_dynamic_lot_size(timestamps[i])
+            
             # Calculate dynamic position size
             ev_data = {
-                'max_loss': (entry_atr * ATR_MULT_INITIAL) * LOT_SIZE,
-                'max_profit': entry_price * (current_target_pct/100) * LOT_SIZE,
+                'max_loss': (entry_atr * ATR_MULT_INITIAL) * lot_size,
+                'max_profit': entry_price * (current_target_pct/100) * lot_size,
                 'prob_win': float(conf),
                 'prob_loss': 1 - float(conf)
             }
             risk_to_use = 20.0 if (house_money_mode and has_withdrawn) else 1.0
-            quantity = PositionSizer.calculate_fixed_fractional(capital, ev_data, risk_pct=risk_to_use, lot_size=LOT_SIZE)
+            quantity = PositionSizer.calculate_fixed_fractional(capital, ev_data, risk_pct=risk_to_use, lot_size=lot_size)
             if quantity == 0:
-                quantity = LOT_SIZE
+                quantity = lot_size
                 
             MAX_LOTS = 1000
-            if quantity > (MAX_LOTS * LOT_SIZE):
-                quantity = MAX_LOTS * LOT_SIZE
+            if quantity > (MAX_LOTS * lot_size):
+                quantity = MAX_LOTS * lot_size
 
             for j in range(i+1, min(i+current_hold_bars+1, n)):
                 bar_low  = df_feat.iloc[j]["low"]  if "low"  in df_feat.columns else closes[j]
@@ -210,21 +229,22 @@ def run_backtest(df_raw: pd.DataFrame, df_feat: pd.DataFrame, model_path: str, i
                         exit_price = tp_price; exit_reason = "TARGET_HIT"; exit_bar = j; break
         else:
             # V1 / V2 standard logic
-            # Calculate dynamic position size
+            lot_size = get_dynamic_lot_size(timestamps[i])
+            # V1/V2 Basic Sizing
             ev_data = {
-                'max_loss': entry_price * (STOP_LOSS_PCT/100) * LOT_SIZE,
-                'max_profit': entry_price * (current_target_pct/100) * LOT_SIZE,
+                'max_loss': entry_price * (STOP_LOSS_PCT/100) * lot_size,
+                'max_profit': entry_price * (current_target_pct/100) * lot_size,
                 'prob_win': float(conf),
                 'prob_loss': 1 - float(conf)
             }
             risk_to_use = 20.0 if (house_money_mode and has_withdrawn) else 1.0
-            quantity = PositionSizer.calculate_fixed_fractional(capital, ev_data, risk_pct=risk_to_use, lot_size=LOT_SIZE)
+            quantity = PositionSizer.calculate_fixed_fractional(capital, ev_data, risk_pct=risk_to_use, lot_size=lot_size)
             if quantity == 0:
-                quantity = LOT_SIZE
-
+                quantity = lot_size
+                
             MAX_LOTS = 1000
-            if quantity > (MAX_LOTS * LOT_SIZE):
-                quantity = MAX_LOTS * LOT_SIZE
+            if quantity > (MAX_LOTS * lot_size):
+                quantity = MAX_LOTS * lot_size
                 
             for j in range(i+1, min(i+current_hold_bars+1, n)):
                 bar_low  = df_feat.iloc[j]["low"]  if "low"  in df_feat.columns else closes[j]
@@ -252,7 +272,7 @@ def run_backtest(df_raw: pd.DataFrame, df_feat: pd.DataFrame, model_path: str, i
         else:
             spot_pnl = (entry_price - exit_price) * quantity
             
-        gross_option_pnl = (spot_pnl * OPTION_DELTA) - (THETA_DECAY_PER_MIN * hold_minutes * (quantity / LOT_SIZE))
+        gross_option_pnl = (spot_pnl * OPTION_DELTA) - (THETA_DECAY_PER_MIN * hold_minutes * (quantity / lot_size))
             
         SLIPPAGE_PCT = 0.05
         TRANSACTION_COST = 60.0
@@ -262,6 +282,7 @@ def run_backtest(df_raw: pd.DataFrame, df_feat: pd.DataFrame, model_path: str, i
         option_exit_value = AVG_PREMIUM * quantity # Rough estimate
         slippage_cost = (option_entry_value + option_exit_value) * (SLIPPAGE_PCT / 100)
         
+        theta_cost = (THETA_DECAY_PER_MIN * hold_minutes * (quantity / lot_size))
         pnl = gross_option_pnl - slippage_cost - TRANSACTION_COST
 
         capital += pnl
@@ -276,10 +297,15 @@ def run_backtest(df_raw: pd.DataFrame, df_feat: pd.DataFrame, model_path: str, i
             "entry_price":  round(float(entry_price), 2),
             "exit_price":   round(float(exit_price), 2),
             "quantity":     quantity,
+            "lot_size":     lot_size,
             "pnl_rs":       round(float(pnl), 2),
             "pnl_pct":      round(float(pnl / (entry_price * quantity)) * 100, 4),
             "exit_reason":  exit_reason,
             "capital_after": round(float(capital + total_withdrawn), 2),
+            "theta_cost":   round(float(theta_cost), 2),
+            "slippage_cost": round(float(slippage_cost), 2),
+            "brokerage":    round(float(TRANSACTION_COST), 2),
+            "is_house_money": bool(house_money_mode and has_withdrawn),
         })
 
         for k in range(i, exit_bar + 1):

@@ -1,4 +1,16 @@
-const API_BASE = "http://localhost:9000/api";
+export const API_BASE = "http://localhost:9000/api";
+
+export async function startPaperTrading() {
+  const res = await fetch(`${API_BASE}/paper-trading/start`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to start paper trading");
+  return res.json();
+}
+
+export async function stopPaperTrading() {
+  const res = await fetch(`${API_BASE}/paper-trading/stop`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to stop paper trading");
+  return res.json();
+}
 
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/health`);

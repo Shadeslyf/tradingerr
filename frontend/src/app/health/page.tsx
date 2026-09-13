@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { fetchHealth, fetchDatasetInfo, listModels } from "@/lib/api";
+import { fetchHealth, fetchDatasetInfo, listModels, deleteModel } from "@/lib/api";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { DataTable } from "@/components/ui/DataTable";
 import { format } from "date-fns";
-import { Server, Database, Activity } from "lucide-react";
+import { Server, Database, Activity, Trash2 } from "lucide-react";
 
 export default function HealthPage() {
   const [health, setHealth] = useState<any>(null);
@@ -13,23 +13,34 @@ export default function HealthPage() {
   const [models, setModels] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [h, d, m] = await Promise.all([
-          fetchHealth(),
-          fetchDatasetInfo(),
-          listModels()
-        ]);
-        setHealth(h);
-        setDataset(d);
-        setModels(m);
-      } catch (err: any) {
-        setError(err.message);
-      }
+  const load = async () => {
+    try {
+      const [h, d, m] = await Promise.all([
+        fetchHealth(),
+        fetchDatasetInfo(),
+        listModels()
+      ]);
+      setHealth(h);
+      setDataset(d);
+      setModels(m);
+    } catch (err: any) {
+      setError(err.message);
     }
+  };
+
+  useEffect(() => {
     load();
   }, []);
+
+  const handleDeleteModel = async (name: string) => {
+    if (!confirm(`Are you sure you want to delete the model "${name}"?`)) return;
+    try {
+      await deleteModel(name);
+      load(); // Refresh the list
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const status = error ? "error" : (health ? "connected" : "reconnecting");
 
@@ -97,6 +108,19 @@ export default function HealthPage() {
                 item.has_calibrator 
                   ? <span className="text-[var(--color-gain)]">Fitted ✅</span>
                   : <span className="text-[var(--color-loss)]">Missing ❌</span>
+              )
+            },
+            {
+              header: "",
+              accessorKey: "actions",
+              cell: (item) => (
+                <button 
+                  onClick={() => handleDeleteModel(item.name)}
+                  className="p-2 text-[var(--color-muted)] hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                  title="Delete Model"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               )
             }
           ]}

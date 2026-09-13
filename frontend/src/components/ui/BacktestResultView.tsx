@@ -36,10 +36,18 @@ export function BacktestResultView({ resultData, onDelete }: { resultData: any, 
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 shrink-0">
         <MetricCard label="Net P&L" value={resultData.net_pnl} isCurrency colored showSign subtext={<PriceCell value={resultData.total_return_pct * 100} isPercentage colored showSign />} />
         <MetricCard label="Win Rate" value={resultData.win_rate_pct} isPercentage subtext={`${resultData.win_trades} W / ${resultData.loss_trades} L`} />
         <MetricCard label="Max Drawdown" value={-resultData.max_drawdown_pct} isPercentage />
+        <MetricCard 
+          label="Risk : Reward" 
+          value={(() => {
+            if (!resultData.avg_loss_rs) return "0:0";
+            const r = Math.abs(resultData.avg_win_rs / resultData.avg_loss_rs);
+            return r >= 1 ? `1 : ${r.toFixed(2)}` : `${(1/r).toFixed(2)} : 1`;
+          })()} 
+        />
         <MetricCard label="Profit Factor" value={resultData.profit_factor || 0} />
         <MetricCard label="Total Trades" value={resultData.total_trades} />
       </div>
@@ -58,8 +66,8 @@ export function BacktestResultView({ resultData, onDelete }: { resultData: any, 
             data={resultData.trades || []}
             keyExtractor={(item: any, idx) => `${item.entry_time}-${idx}`}
             columns={[
-              { header: "Entry Time", accessorKey: "entry_time", cell: (item) => format(new Date(item.entry_time), "MMM d, HH:mm") },
-              { header: "Exit Time", accessorKey: "exit_time", cell: (item) => item.exit_time ? format(new Date(item.exit_time), "MMM d, HH:mm") : "-" },
+              { header: "Entry Time", accessorKey: "entry_time", cell: (item) => format(new Date(item.entry_time), "MMM d, yyyy HH:mm") },
+              { header: "Exit Time", accessorKey: "exit_time", cell: (item) => item.exit_time ? format(new Date(item.exit_time), "MMM d, yyyy HH:mm") : "-" },
               { 
                 header: "Type", 
                 accessorKey: "direction", 
@@ -73,14 +81,39 @@ export function BacktestResultView({ resultData, onDelete }: { resultData: any, 
                 header: "Lots", 
                 accessorKey: "quantity", 
                 cell: (item) => {
-                  const lots = Math.floor((item.quantity || 0) / 25);
-                  return <span className="text-[var(--color-primary)]">{lots} Lot{lots > 1 ? 's' : ''} <span className="text-[var(--color-dim)] text-xs">({item.quantity} Qty)</span></span>;
+                  const lotSize = item.lot_size || 50; // Fallback to 50 for old backtest results
+                  const lots = Math.floor((item.quantity || 0) / lotSize);
+                  return (
+                    <div className="flex flex-col">
+                      <span className="text-[var(--color-primary)]">
+                        {lots} Lot{lots > 1 ? 's' : ''} 
+                        {item.is_house_money && (
+                          <span className="ml-1 px-1 py-0.5 text-[8px] bg-purple-500/20 text-purple-400 rounded-sm uppercase tracking-wider font-bold">HM</span>
+                        )}
+                      </span>
+                      <span className="text-[var(--color-dim)] text-xs">({item.quantity} Qty)</span>
+                    </div>
+                  );
                 } 
               },
               { header: "Conf.", accessorKey: "confidence", cell: (item) => <PriceCell value={item.confidence * 100} isPercentage /> },
               { header: "Entry", accessorKey: "entry_price", cell: (item) => <PriceCell value={item.entry_price} /> },
               { header: "Exit", accessorKey: "exit_price", cell: (item) => <PriceCell value={item.exit_price} /> },
+              { 
+                header: "Costs", 
+                accessorKey: "costs", 
+                cell: (item) => {
+                  const totalCosts = (item.theta_cost || 0) + (item.slippage_cost || 0) + (item.brokerage || 0);
+                  return totalCosts > 0 ? (
+                    <div className="flex flex-col" title={`Theta: ₹${item.theta_cost} | Slippage: ₹${item.slippage_cost} | Brokerage: ₹${item.brokerage}`}>
+                      <PriceCell value={-totalCosts} isCurrency className="text-[var(--color-loss)]" />
+                      <span className="text-[8px] text-[var(--color-dim)] mt-0.5">FEE+SLP+THT</span>
+                    </div>
+                  ) : "-";
+                }
+              },
               { header: "Net P&L", accessorKey: "pnl_rs", cell: (item) => <PriceCell value={item.pnl_rs} isCurrency colored showSign /> },
+              { header: "Capital", accessorKey: "capital_after", cell: (item) => <PriceCell value={item.capital_after} isCurrency className="font-medium" /> },
               { header: "Reason", accessorKey: "exit_reason", cell: (item) => <span className="text-xs text-[var(--color-muted)]">{item.exit_reason}</span> },
             ]}
           />

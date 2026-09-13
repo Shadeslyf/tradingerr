@@ -1,51 +1,62 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { fetchLiveState, fetchHealth } from "@/lib/api";
+import { fetchLiveState, fetchHealth, startPaperTrading, stopPaperTrading } from "@/lib/api";
 import { PriceCell } from "@/components/ui/PriceCell";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { DataTable } from "@/components/ui/DataTable";
 import { format } from "date-fns";
-import { PlayCircle } from "lucide-react";
+import { PlayCircle, Square, Play, Loader2 } from "lucide-react";
 
 export default function LiveTradingPage() {
   const [liveState, setLiveState] = useState<any>(null);
   const [health, setHealth] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isToggling, setIsToggling] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-    
-    async function poll() {
+    const fetchData = async () => {
       try {
         const h = await fetchHealth();
-        if (mounted) setHealth(h);
+        setHealth(h);
         
-        if (h.live_feed_status === "active") {
-          const s = await fetchLiveState();
-          if (mounted) {
-            setLiveState(s);
-            setError(null);
-          }
-        } else {
-          if (mounted) setError("Live feed is not active");
+        // Only fetch state if healthy or active
+        if (h.status === "healthy") {
+          const state = await fetchLiveState();
+          setLiveState(state);
+          setError(null);
         }
       } catch (err: any) {
-        if (mounted) setError(err.message);
+        setError(err.message || "Failed to connect to backend");
       }
-    }
-    
-    poll();
-    const interval = setInterval(poll, 5000); // 5s polling
-    return () => {
-      mounted = false;
-      clearInterval(interval);
     };
+
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
   }, []);
 
-  const status = error ? "error" : (health ? "connected" : "reconnecting");
-  const statusText = error ? error : (health?.live_feed_status === "active" ? "Live Feed Connected" : "Awaiting Data...");
+  const handleToggleFeed = async () => {
+    setIsToggling(true);
+    try {
+      if (health?.is_running) {
+        await stopPaperTrading();
+      } else {
+        await startPaperTrading();
+      }
+      // Instantly refresh health
+      const h = await fetchHealth();
+      setHealth(h);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
+  const status = error ? "error" : (health?.live_feed_status === "active" ? "connected" : "reconnecting");
+  const statusText = error ? error : (health?.is_running ? (health?.live_feed_status === "active" ? "Live Feed Connected" : "Awaiting Data...") : "Stopped");
 
   // Extract V4 (or fallback to first model)
   const models = liveState?.models || {};
@@ -65,8 +76,32 @@ export default function LiveTradingPage() {
   return (
     <div className="flex flex-col h-full space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-medium tracking-tight text-[var(--color-primary)]">Live Paper Trading</h1>
-        <StatusPill status={status} text={statusText} />
+        <div className="flex items-center space-x-4">
+          <h1 className="text-xl font-medium tracking-tight text-[var(--color-primary)] flex items-center">
+            <PlayCircle className="w-5 h-5 mr-2 text-[var(--color-gain)]" />
+            Live Paper Trading
+          </h1>
+          <StatusPill status={status as any} text={statusText} />
+        </div>
+        
+        <button 
+          onClick={handleToggleFeed}
+          disabled={isToggling || !health}
+          className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+            health?.is_running 
+              ? "bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20" 
+              : "bg-green-500/10 text-green-500 hover:bg-green-500/20 border border-green-500/20"
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          {isToggling ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : health?.is_running ? (
+            <Square className="w-4 h-4 mr-2" />
+          ) : (
+            <Play className="w-4 h-4 mr-2 fill-current" />
+          )}
+          {health?.is_running ? "Stop Paper Trading" : "Start Paper Trading"}
+        </button>
       </div>
 
       {/* Top Stats */}

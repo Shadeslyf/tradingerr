@@ -135,6 +135,17 @@ export default function ComparePage() {
                       {selectedIds.map(id => <td key={id} className="p-3 text-[var(--color-primary)]">{results[id]?.total_trades || 0}</td>)}
                     </tr>
                     <tr className="hover:bg-[var(--color-elevated)]/50">
+                      <td className="p-3 text-[var(--color-dim)]">Risk : Reward</td>
+                      {selectedIds.map(id => {
+                        let rrText = "0:0";
+                        if (results[id]?.avg_loss_rs) {
+                          const r = Math.abs(results[id].avg_win_rs / results[id].avg_loss_rs);
+                          rrText = r >= 1 ? `1 : ${r.toFixed(2)}` : `${(1/r).toFixed(2)} : 1`;
+                        }
+                        return <td key={id} className="p-3 text-[var(--color-primary)]">{rrText}</td>;
+                      })}
+                    </tr>
+                    <tr className="hover:bg-[var(--color-elevated)]/50">
                       <td className="p-3 text-[var(--color-dim)]">Profit Factor</td>
                       {selectedIds.map(id => <td key={id} className="p-3 text-[var(--color-primary)]">{results[id]?.profit_factor?.toFixed(2) || "0.00"}</td>)}
                     </tr>
