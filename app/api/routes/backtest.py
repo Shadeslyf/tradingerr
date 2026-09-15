@@ -26,15 +26,42 @@ def run_backtest_pipeline(job_id: str, request: BacktestRequest):
         df_raw["timestamp"] = pd.to_datetime(df_raw["timestamp"], utc=False)
         if df_raw["timestamp"].dt.tz is not None:
             df_raw["timestamp"] = df_raw["timestamp"].dt.tz_localize(None)
+            
+        # Blend today's live data if available so users can backtest today
+        live_state_path = "data/live_paper_trading.json"
+        if os.path.exists(live_state_path):
+            try:
+                with open(live_state_path, "r") as f:
+                    live_state = json.load(f)
+                live_md = live_state.get("market_data", {})
+                if live_md and live_md.get("timestamp"):
+                    df_live = pd.DataFrame(live_md)
+                    if "volume" not in df_live.columns:
+                        df_live["volume"] = 1000  # Dummy volume for live ticks
+                    df_live["timestamp"] = pd.to_datetime(df_live["timestamp"], utc=False)
+                    if df_live["timestamp"].dt.tz is not None:
+                        df_live["timestamp"] = df_live["timestamp"].dt.tz_localize(None)
+                    df_raw = pd.concat([df_raw, df_live]).drop_duplicates(subset=["timestamp"], keep="last").sort_values("timestamp").reset_index(drop=True)
+                    df_raw["volume"] = df_raw["volume"].fillna(1000)
+                    logger.info("Blended live paper trading data into backtest dataset.")
+            except Exception as e:
+                logger.warning(f"Failed to blend live data: {e}")
 
         start_dt = pd.to_datetime(request.start_date)
         end_dt = pd.to_datetime(request.end_date)
         
-        # Buffer for features (2 days)
-        buffer_start = start_dt - timedelta(days=2)
-        
-        df_slice = df_raw[(df_raw["timestamp"].dt.date >= buffer_start.date()) & 
-                          (df_raw["timestamp"].dt.date <= end_dt.date())].copy()
+        # Buffer for features: Take the 400 rows immediately preceding the start date
+        idx_start = df_raw[df_raw["timestamp"].dt.date >= start_dt.date()].index.min()
+        if pd.isna(idx_start):
+            # If start date is beyond the dataset, just take the end of the dataset
+            idx_start = len(df_raw)
+            
+        buffer_start_idx = max(0, idx_start - 400)
+        idx_end = df_raw[df_raw["timestamp"].dt.date <= end_dt.date()].index.max()
+        if pd.isna(idx_end):
+            idx_end = len(df_raw) - 1
+            
+        df_slice = df_raw.iloc[buffer_start_idx : int(idx_end) + 1].copy()
         
         if len(df_slice) < 100:
             raise ValueError("Not enough data in the selected date range.")

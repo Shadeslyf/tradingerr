@@ -236,8 +236,6 @@ export default function TrainPage() {
                   required
                   value={btStart}
                   onChange={e => setBtStart(e.target.value)}
-                  min={dataset ? dataset.min_date.split("T")[0] : ""}
-                  max={dataset ? dataset.max_date.split("T")[0] : ""}
                   className="w-full bg-[var(--color-elevated)] border border-[var(--color-hairline)] rounded p-2 text-sm outline-none focus:border-[var(--color-primary)] [color-scheme:dark]"
                 />
               </div>
@@ -248,8 +246,6 @@ export default function TrainPage() {
                   required
                   value={btEnd}
                   onChange={e => setBtEnd(e.target.value)}
-                  min={dataset ? dataset.min_date.split("T")[0] : ""}
-                  max={dataset ? dataset.max_date.split("T")[0] : ""}
                   className="w-full bg-[var(--color-elevated)] border border-[var(--color-hairline)] rounded p-2 text-sm outline-none focus:border-[var(--color-primary)] [color-scheme:dark]"
                 />
               </div>

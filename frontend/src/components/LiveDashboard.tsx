@@ -153,7 +153,12 @@ export default function LiveDashboard({ liveState }: { liveState: any }) {
           </div>
         </div>
         <div className="flex-1 min-h-0 relative">
-          <LiveChart candles={candles} signals={chartSignals} />
+          <LiveChart 
+            candles={candles} 
+            signals={chartSignals} 
+            openPosition={activeModel.open_position}
+            currentLtp={currentLtp}
+          />
         </div>
       </div>
 
@@ -176,7 +181,7 @@ export default function LiveDashboard({ liveState }: { liveState: any }) {
             <h2 className="text-sm font-medium">Bot Execution Log</h2>
           </div>
           <div className="flex-1 overflow-auto">
-            <TradeLog trades={trades} />
+            <TradeLog trades={trades} signals={activeModel.recent_signals || []} />
           </div>
         </div>
 
