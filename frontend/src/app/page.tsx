@@ -8,6 +8,7 @@ import { MetricCard } from "@/components/ui/MetricCard";
 import { DataTable } from "@/components/ui/DataTable";
 import { format } from "date-fns";
 import { PlayCircle, Square, Play, Loader2 } from "lucide-react";
+import LiveDashboard from "@/components/LiveDashboard";
 
 export default function LiveTradingPage() {
   const [liveState, setLiveState] = useState<any>(null);
@@ -128,97 +129,12 @@ export default function LiveTradingPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
-        {/* Positions Table */}
-        <div className="flex flex-col bg-[var(--color-panel)] border border-[var(--color-hairline)] overflow-hidden">
-          <div className="p-4 border-b border-[var(--color-hairline)] bg-[var(--color-elevated)] flex justify-between items-center">
-            <h2 className="text-sm font-medium">Open Positions</h2>
-          </div>
-          <div className="flex-1 overflow-auto">
-            <DataTable 
-              data={positions}
-              emptyMessage="No active positions"
-              keyExtractor={(item: any) => item.entry_time}
-              columns={[
-                { 
-                  header: "Type", 
-                  accessorKey: "direction", 
-                  cell: (item) => (
-                    <span className={item.direction === "LONG" ? "text-[var(--color-gain)] font-medium" : "text-[var(--color-loss)] font-medium"}>
-                      {item.direction === "LONG" ? "CALL (CE)" : "PUT (PE)"}
-                    </span>
-                  ) 
-                },
-                { header: "Entry Price", accessorKey: "entry_price", cell: (item) => <PriceCell value={item.entry_price} /> },
-                { 
-                  header: "Lots", 
-                  accessorKey: "quantity", 
-                  cell: (item) => {
-                    const lots = Math.floor((item.quantity || 0) / 25);
-                    return <span className="text-[var(--color-primary)]">{lots} Lot{lots > 1 ? 's' : ''} <span className="text-[var(--color-dim)] text-xs">({item.quantity} Qty)</span></span>;
-                  } 
-                },
-                { header: "Confidence", accessorKey: "confidence", cell: (item) => <PriceCell value={item.confidence * 100} isPercentage /> },
-                { header: "Bars Held", accessorKey: "bars_held" },
-              ]}
-            />
-          </div>
+      {/* Live Trading Dashboard (Recreated via WebSocket) */}
+      {health?.is_running && liveState && (
+        <div className="mt-8 flex-1 min-h-0">
+          <LiveDashboard liveState={liveState} />
         </div>
-
-        {/* Signal Feed */}
-        <div className="flex flex-col bg-[var(--color-panel)] border border-[var(--color-hairline)] overflow-hidden">
-          <div className="p-4 border-b border-[var(--color-hairline)] bg-[var(--color-elevated)] flex justify-between items-center">
-            <h2 className="text-sm font-medium">Live Signal Feed (1-Min)</h2>
-            <div className="flex items-center text-[var(--color-dim)] text-xs">
-              <PlayCircle className="w-4 h-4 mr-1 animate-pulse text-[var(--color-gain)]" />
-              Monitoring
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto">
-            <DataTable 
-              data={displaySignals}
-              emptyMessage="Waiting for signals..."
-              keyExtractor={(item: any, idx) => `${item.timestamp}-${idx}`}
-              columns={[
-                { 
-                  header: "Time", 
-                  accessorKey: "timestamp", 
-                  cell: (item) => <span className="font-mono text-xs">{format(new Date(item.timestamp), "HH:mm:ss")}</span> 
-                },
-                { 
-                  header: "Signal", 
-                  accessorKey: "signal",
-                  cell: (item) => (
-                    <span className={
-                      item.signal === "LONG" ? "text-[var(--color-gain)] font-bold" : 
-                      item.signal === "SHORT" ? "text-[var(--color-loss)] font-bold" : 
-                      "text-[var(--color-muted)]"
-                    }>
-                      {item.signal}
-                    </span>
-                  )
-                },
-                { header: "Conf.", accessorKey: "confidence", cell: (item) => <PriceCell value={item.confidence * 100} isPercentage /> },
-                { 
-                  header: "Action", 
-                  accessorKey: "acted_on",
-                  cell: (item) => (
-                    <div className="flex items-center">
-                      {item.acted_on ? (
-                        <span className="text-[var(--color-gain)] text-xs font-medium bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">EXECUTED</span>
-                      ) : (
-                        <span className="text-[var(--color-muted)] text-xs font-medium flex items-center">
-                          SKIPPED {item.skip_reason && <span className="ml-1 text-[var(--color-dim)] text-[10px]">({item.skip_reason})</span>}
-                        </span>
-                      )}
-                    </div>
-                  )
-                },
-              ]}
-            />
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

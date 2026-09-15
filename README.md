@@ -33,3 +33,13 @@ Experimental quantitative trading platform for NIFTY 50 options using Angel One 
 ## Development Phases
 
 This project is being built in phases. Currently at Phase 1 & 2.
+
+To run the backend:
+
+bash
+./scripts/start_api.sh
+
+To run the frontend:
+
+bash
+cd frontend && npm run dev

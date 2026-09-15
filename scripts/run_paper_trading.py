@@ -233,127 +233,189 @@ def main():
 
     last_processed_timestamp = None
 
+    import queue
+    tick_queue = queue.Queue()
+    
+    def on_tick(msg):
+        # SmartWebSocketV2 sends a dict (not list) with prices in paise (raw int / 100)
+        items = [msg] if isinstance(msg, dict) else (msg if isinstance(msg, list) else [])
+        for item in items:
+            if 'last_traded_price' in item and str(item.get('token', '')).strip() == '26000':
+                normalized = dict(item)
+                normalized['last_traded_price'] = item['last_traded_price'] / 100.0
+                tick_queue.put(normalized)
+
+    if not broker.init_websocket(on_tick_callback=on_tick):
+        logger.error("Failed to initialize WebSocket.")
+        return
+        
+    # Subscribe to Nifty Spot (Token 26000, Exchange 1=NSE, Mode 1=LTP)
+    broker.subscribe_websocket("NIFTY_LIVE", 1, [{"exchangeType": 1, "tokens": ["26000"]}])
+
+    # 1. Fetch initial historical data to seed the FeaturePipeline
+    # Fetch from the start of the trading day (09:15) so the UI shows the full day's chart.
+    now = datetime.now()
+    todate = now.strftime("%Y-%m-%d %H:%M")
+    
+    # If it's before 09:15, or weekend, we might need a fallback, but for today we just ask for today's 09:15
+    fromdate = now.strftime("%Y-%m-%d 09:15")
+    
+    # If now is somehow before 09:15 (e.g. 07:00 AM), fromdate will be in the future,
+    # so let's just make sure it's valid for Angel One:
+    if now.hour < 9 or (now.hour == 9 and now.minute < 15):
+        fromdate = (now - timedelta(days=1)).strftime("%Y-%m-%d 09:15")
+    logger.info(f"Fetching Initial Seed Data from {fromdate} to {todate} via REST API...")
+    
+    raw_data = None
+    for attempt in range(3):
+        # NIFTY 50 historical data requires token 99926000 (Spot Index)
+        raw_data = broker.get_candle_data(exchange="NSE", symboltoken="99926000", interval="ONE_MINUTE", fromdate=fromdate, todate=todate)
+        if raw_data:
+            break
+        logger.warning(f"Seed fetch attempt {attempt+1}/3 failed. Waiting 2s before retry...")
+        time.sleep(2)
+    
+    if not raw_data:
+        logger.error("Failed to fetch initial seed data from REST API. Cannot start pipeline.")
+        return
+
+    df = pd.DataFrame(raw_data, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
+
+    current_minute = None
+    current_candle = None
+    last_processed_timestamp = None
+
+    logger.info("Entering Live WebSocket Event Loop...")
     while True:
         try:
-            now = datetime.now()
-            todate = now.strftime("%Y-%m-%d %H:%M")
-            fromdate = (now - timedelta(minutes=150)).strftime("%Y-%m-%d %H:%M")
-            
-            logger.info(f"Fetching Live Data from {fromdate} to {todate}...")
-            raw_data = broker.get_candle_data(exchange="NSE", symboltoken="99926000", interval="ONE_MINUTE", fromdate=fromdate, todate=todate)
-            
-            if not raw_data:
-                logger.warning("No data returned for 99926000. Trying token 26000...")
-                raw_data = broker.get_candle_data(exchange="NSE", symboltoken="26000", interval="ONE_MINUTE", fromdate=fromdate, todate=todate)
-                
-            if not raw_data:
-                logger.warning("Still no data. (Market might be closed). Fetching Friday's data for simulation...")
-                # Fallback to Friday for testing on weekends
-                todate_fallback = "2026-09-11 15:30"
-                fromdate_fallback = "2026-09-11 13:00"
-                raw_data = broker.get_candle_data(exchange="NSE", symboltoken="99926000", interval="ONE_MINUTE", fromdate=fromdate_fallback, todate=todate_fallback)
-                if not raw_data:
-                    raw_data = broker.get_candle_data(exchange="NSE", symboltoken="26000", interval="ONE_MINUTE", fromdate=fromdate_fallback, todate=todate_fallback)
-                    
-                if not raw_data:
-                    logger.error("Failed to fetch fallback data. Retrying in 60 seconds.")
-                    time.sleep(60)
-                    continue
-                
-            df = pd.DataFrame(raw_data, columns=["timestamp", "open", "high", "low", "close", "volume"])
-            df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
-            
-            df_feat = FeaturePipeline.generate_features(df.copy())
-            if df_feat.empty:
-                logger.warning("Feature pipeline returned empty. Waiting...")
-                time.sleep(60)
-                continue
-                
-            df_raw_aligned = df.iloc[-len(df_feat):].reset_index(drop=True)
-            df_feat = df_feat.reset_index(drop=True)
-            
-            latest_feat = df_feat.iloc[-1:]
-            latest_raw = df_raw_aligned.iloc[-1]
-            current_timestamp = latest_raw["timestamp"]
-            current_price = latest_raw["close"]
-            
-            if last_processed_timestamp == current_timestamp:
-                logger.info(f"Candle {current_timestamp} already processed. Waiting...")
-                time.sleep(60)
-                continue
-                
-            logger.info(f"Processing Live Tick: {current_timestamp} @ ₹{current_price}")
-            
-            for name, model in loaded_models.items():
-                expected_cols = model.feature_names_in_
-                X = latest_feat.reindex(columns=expected_cols, fill_value=0.0)
-                
-                probs = model.predict_proba(X)
-                pred = np.argmax(probs, axis=1)[0]
-                conf = np.max(probs, axis=1)[0]
-                
-                # Apply probability calibration
-                if name in loaded_calibrators:
-                    conf = float(loaded_calibrators[name].predict([conf])[0])
-                
-                sim = simulators[name]
-                adx_val = latest_feat["adx_14"].values[0] if "adx_14" in latest_feat.columns else 25.0
-                current_atr = latest_feat["atr_14"].values[0] if "atr_14" in latest_feat.columns else 20.0
-                vol_ratio = latest_feat["vol_ratio"].values[0] if "vol_ratio" in latest_feat.columns else 1.0
-                
-                sim.process_tick(current_timestamp, current_price, current_atr, conf, pred, adx_val, vol_ratio)
-                
-            # --- Option Chain Logic ---
-            option_chain_data = []
+            # 2. Wait for incoming ticks
             try:
-                atm = round(current_price / 50) * 50
-                strikes = [atm + (i * 50) for i in range(-5, 6)]
-                opts = im.get_current_nifty_options()
-                opts['expiry_dt'] = pd.to_datetime(opts['expiry'], format='%d%b%Y', errors='coerce')
-                opts = opts[opts['expiry_dt'] >= now]
-                if not opts.empty:
-                    nearest = opts.iloc[0]['expiry_dt']
-                    opts = opts[(opts['expiry_dt'] == nearest) & (opts['strike'].isin(strikes))]
-                    tokens = opts['token'].tolist()
-                    md = broker.smart_api.getMarketData("FULL", {"NFO": tokens})
-                    if md and md.get("status"):
-                        fetched = md.get("data", {}).get("fetched", [])
-                        # Map token to ltp and oi
-                        ltp_map = {item["symbolToken"]: item["ltp"] for item in fetched}
-                        oi_map = {item["symbolToken"]: item.get("opnInterest", 0) for item in fetched}
-                        
-                        for st in strikes:
-                            st_opts = opts[opts['strike'] == st]
-                            ce = st_opts[st_opts['symbol'].str.endswith('CE')]
-                            pe = st_opts[st_opts['symbol'].str.endswith('PE')]
-                            
-                            ce_token = ce.iloc[0]['token'] if not ce.empty else None
-                            pe_token = pe.iloc[0]['token'] if not pe.empty else None
-                            
-                            ce_ltp = ltp_map.get(ce_token)
-                            pe_ltp = ltp_map.get(pe_token)
-                            ce_oi = oi_map.get(ce_token, 0)
-                            pe_oi = oi_map.get(pe_token, 0)
-                            
-                            option_chain_data.append({
-                                "CE_OI": ce_oi,
-                                "CE_LTP": ce_ltp,
-                                "Strike": st,
-                                "PE_LTP": pe_ltp,
-                                "PE_OI": pe_oi
-                            })
-            except Exception as e:
-                logger.error(f"Failed to fetch Option Chain: {e}")
+                tick = tick_queue.get(timeout=1.0)
+            except queue.Empty:
+                # No tick arrived in the last second
+                continue
+
+            # Parse Tick
+            ltp = float(tick.get('last_traded_price', 0))
+            if ltp == 0:
+                continue
                 
-            last_processed_timestamp = current_timestamp
-            
-            save_state(df_raw_aligned, simulators, option_chain_data)
-            
-            time.sleep(60)
-            
+            # If exchange timestamp is available, use it, else use system time
+            # For simplicity in simulation, we use system time
+            tick_time = datetime.now()
+            minute_floor = tick_time.replace(second=0, microsecond=0)
+
+            # 3. Aggregate Ticks into 1-Minute Candles
+            if current_minute != minute_floor:
+                # Minute Rollover: We have a completed candle!
+                if current_candle:
+                    # Append candle to DataFrame
+                    new_row = pd.DataFrame([{
+                        "timestamp": pd.to_datetime(current_candle["time"], unit='s'),
+                        "open": current_candle["open"],
+                        "high": current_candle["high"],
+                        "low": current_candle["low"],
+                        "close": current_candle["close"],
+                        "volume": 0 # Not provided by LTP stream
+                    }])
+                    df = pd.concat([df, new_row], ignore_index=True)
+                    # Keep max 150 rows to prevent memory leak
+                    if len(df) > 150:
+                        df = df.iloc[-150:].reset_index(drop=True)
+
+                    current_timestamp = new_row["timestamp"].iloc[0]
+                    
+                    if last_processed_timestamp != current_timestamp:
+                        # 4. Generate Features & Run Inference
+                        df_feat = FeaturePipeline.generate_features(df.copy())
+                        if not df_feat.empty:
+                            df_raw_aligned = df.iloc[-len(df_feat):].reset_index(drop=True)
+                            df_feat = df_feat.reset_index(drop=True)
+                            
+                            latest_feat = df_feat.iloc[-1:]
+                            current_price = current_candle["close"]
+                            
+                            logger.info(f"Processing Live Tick: {current_timestamp} @ ₹{current_price}")
+                            
+                            for name, model in loaded_models.items():
+                                expected_cols = model.feature_names_in_
+                                X = latest_feat.reindex(columns=expected_cols, fill_value=0.0)
+                                
+                                probs = model.predict_proba(X)
+                                pred = np.argmax(probs, axis=1)[0]
+                                conf = np.max(probs, axis=1)[0]
+                                
+                                if name in loaded_calibrators:
+                                    conf = float(loaded_calibrators[name].predict([conf])[0])
+                                
+                                sim = simulators[name]
+                                adx_val = latest_feat["adx_14"].values[0] if "adx_14" in latest_feat.columns else 25.0
+                                current_atr = latest_feat["atr_14"].values[0] if "atr_14" in latest_feat.columns else 20.0
+                                vol_ratio = latest_feat["vol_ratio"].values[0] if "vol_ratio" in latest_feat.columns else 1.0
+                                
+                                sim.process_tick(current_timestamp, current_price, current_atr, conf, pred, adx_val, vol_ratio)
+                            
+                            # --- Option Chain Logic ---
+                            option_chain_data = []
+                            try:
+                                atm = round(current_price / 50) * 50
+                                strikes = [atm + (i * 50) for i in range(-5, 6)]
+                                opts = im.get_current_nifty_options()
+                                opts['expiry_dt'] = pd.to_datetime(opts['expiry'], format='%d%b%Y', errors='coerce')
+                                opts = opts[opts['expiry_dt'] >= tick_time]
+                                if not opts.empty:
+                                    nearest = opts.iloc[0]['expiry_dt']
+                                    opts = opts[(opts['expiry_dt'] == nearest) & (opts['strike'].isin(strikes))]
+                                    tokens = opts['token'].tolist()
+                                    md = broker.smart_api.getMarketData("FULL", {"NFO": tokens})
+                                    if md and md.get("status"):
+                                        fetched = md.get("data", {}).get("fetched", [])
+                                        ltp_map = {item["symbolToken"]: item["ltp"] for item in fetched}
+                                        oi_map = {item["symbolToken"]: item.get("opnInterest", 0) for item in fetched}
+                                        
+                                        for st in strikes:
+                                            st_opts = opts[opts['strike'] == st]
+                                            ce = st_opts[st_opts['symbol'].str.endswith('CE')]
+                                            pe = st_opts[st_opts['symbol'].str.endswith('PE')]
+                                            
+                                            ce_token = ce.iloc[0]['token'] if not ce.empty else None
+                                            pe_token = pe.iloc[0]['token'] if not pe.empty else None
+                                            
+                                            option_chain_data.append({
+                                                "CE_OI": oi_map.get(ce_token, 0),
+                                                "CE_LTP": ltp_map.get(ce_token),
+                                                "Strike": st,
+                                                "PE_LTP": ltp_map.get(pe_token),
+                                                "PE_OI": oi_map.get(pe_token, 0)
+                                            })
+                            except Exception as e:
+                                logger.error(f"Failed to fetch Option Chain: {e}")
+                                
+                            last_processed_timestamp = current_timestamp
+                            save_state(df_raw_aligned, simulators, option_chain_data)
+
+                # Reset for new minute
+                current_minute = minute_floor
+                current_candle = {
+                    "time": int(minute_floor.timestamp()),
+                    "open": ltp,
+                    "high": ltp,
+                    "low": ltp,
+                    "close": ltp
+                }
+            else:
+                # Update current minute candle
+                if current_candle:
+                    current_candle["high"] = max(current_candle["high"], ltp)
+                    current_candle["low"] = min(current_candle["low"], ltp)
+                    current_candle["close"] = ltp
+
         except Exception as e:
             logger.error(f"Loop Exception: {e}")
-            time.sleep(60)
+            import traceback
+            traceback.print_exc()
+            time.sleep(5)
             
 def save_state(df_raw, simulators, option_chain_data=None):
     out = {

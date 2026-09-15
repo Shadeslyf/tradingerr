@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from app.api.routes import training, backtest, data
+from app.api.routes import training, backtest, data, live
 
 app = FastAPI(
     title="NIFTY AI Trader API",
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(training.router, prefix="/api", tags=["Training"])
 app.include_router(backtest.router, prefix="/api", tags=["Backtesting"])
 app.include_router(data.router, prefix="/api", tags=["Data"])
+app.include_router(live.router, prefix="/api/live", tags=["Live"])
 
 @app.get("/api/health")
 def health_check():

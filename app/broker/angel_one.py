@@ -49,16 +49,21 @@ class AngelOneBroker(BrokerClient):
 
     def get_instrument_master(self) -> List[Dict[str, Any]]:
         logger.info(f"Fetching instrument master from {self.instrument_url}")
-        try:
-            import requests
-            response = requests.get(self.instrument_url, timeout=30)
-            response.raise_for_status()
-            instrument_list = response.json()
-            logger.info(f"Successfully fetched {len(instrument_list)} instruments.")
-            return instrument_list
-        except Exception as e:
-            logger.error(f"Failed to fetch instrument master: {e}")
-            return []
+        import requests
+        for attempt in range(3):
+            try:
+                response = requests.get(self.instrument_url, timeout=120)
+                response.raise_for_status()
+                instrument_list = response.json()
+                logger.info(f"Successfully fetched {len(instrument_list)} instruments.")
+                return instrument_list
+            except Exception as e:
+                logger.warning(f"Instrument master attempt {attempt+1}/3 failed: {e}")
+                if attempt < 2:
+                    import time
+                    time.sleep(5)
+        logger.error("Failed to fetch instrument master after 3 attempts.")
+        return []
 
     def get_candle_data(self, exchange: str, symboltoken: str, interval: str, fromdate: str, todate: str) -> List[Dict[str, Any]]:
         """
@@ -100,3 +105,58 @@ class AngelOneBroker(BrokerClient):
         return {}
     def get_positions(self) -> List[Dict[str, Any]]:
         return []
+
+    # WebSocket Integration
+    def init_websocket(self, on_tick_callback, on_open_callback=None):
+        if not self.auth_token or not self.feed_token:
+            logger.error("Tokens missing for WebSocket. Call login() first.")
+            return False
+
+        from SmartApi.smartWebSocketV2 import SmartWebSocketV2
+        
+        self.sws = SmartWebSocketV2(self.auth_token, self.api_key, self.client_id, self.feed_token)
+
+        def on_data(wsapp, message):
+            if on_tick_callback:
+                on_tick_callback(message)
+
+        import threading
+        self.ws_ready = threading.Event()
+
+        def on_open(wsapp):
+            logger.info("Angel One SmartWebSocketV2 Connected.")
+            self.ws_ready.set()
+            if on_open_callback:
+                on_open_callback(wsapp)
+
+        def on_error(wsapp, error):
+            logger.error(f"WebSocket Error: {error}")
+
+        def on_close(wsapp):
+            logger.warning("WebSocket Closed.")
+            self.ws_ready.clear()
+
+        self.sws.on_open = on_open
+        self.sws.on_data = on_data
+        self.sws.on_error = on_error
+        self.sws.on_close = on_close
+
+        # Start in a separate thread since sws.connect() is blocking
+        self.ws_thread = threading.Thread(target=self.sws.connect, daemon=True)
+        self.ws_thread.start()
+        
+        # Wait up to 10 seconds for connection to establish
+        connected = self.ws_ready.wait(timeout=10.0)
+        if not connected:
+            logger.error("Timeout waiting for WebSocket to connect.")
+            return False
+            
+        return True
+
+    def subscribe_websocket(self, correlation_id: str, mode: int, tokens: List[Dict[str, Any]]):
+        if hasattr(self, 'sws') and self.sws:
+            self.sws.subscribe(correlation_id, mode, tokens)
+            logger.info(f"Subscribed to WebSocket stream: {tokens}")
+        else:
+            logger.error("WebSocket not initialized. Call init_websocket() first.")
+
